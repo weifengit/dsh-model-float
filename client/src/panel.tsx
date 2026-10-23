@@ -38,8 +38,18 @@ export interface Placement {
 /** The localStorage key holding the placement. */
 export const PLACEMENT_KEY = 'dsh-model-float:placement:v1'
 
-/** The whale's edge length in px — the size a placement is measured against. */
+/**
+ * The whale button's edge in px — the size a placement is measured against.
+ */
 export const WHALE_SIZE = 62
+
+/**
+ * The official mark's rendered width in px.
+ *
+ * The mark is 23.16:17.04 — wider than it is tall — so it is sized by width
+ * and centred inside the square button.
+ */
+export const WHALE_WIDTH = 52
 
 /** The gap kept between the whale and the viewport edge, in px. */
 export const EDGE_GAP = 24
@@ -112,8 +122,14 @@ export interface PanelProps {
   readonly error: string
   /** Ask the host for a fresh reading. */
   readonly refresh: () => void
-  /** Hide (or restore) one vendor's models in the model picker. */
-  readonly setHidden: (provider: string, hidden: boolean) => Promise<void>
+  /** Whether the master switch is on. */
+  readonly switchOn: boolean
+  /** The vendor ids the switch hid — they are not in the list while it is on. */
+  readonly hiddenVendors: readonly string[]
+  /** Whether the switch is mid-flight. */
+  readonly switchPending: boolean
+  /** Turn the master switch on or off. */
+  readonly setSwitch: (on: boolean) => Promise<void>
   /** The translator, already bound to this plugin's namespace. */
   readonly t: (key: string, vars?: Record<string, string | number>) => string
 }
@@ -124,17 +140,13 @@ export interface PanelProps {
  * @param props - see {@link PanelProps}.
  */
 export function ModelFloatPanel(props: PanelProps): React.ReactElement {
-  const { snapshot, loading, error, refresh, setHidden, t } = props
+  const { snapshot, loading, error, refresh, switchOn, hiddenVendors, switchPending, setSwitch, t } = props
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
   const [placement, setPlacement] = useState<Placement>(() => readPlacement(window.innerWidth, window.innerHeight))
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  /** Which vendor's hide/restore is in flight, and what it is doing. */
-  const [pending, setPending] = useState<{ provider: string, hidden: boolean } | null>(null)
-  /** The error of the last hide/restore, shown on the row that failed. */
-  const [actionError, setActionError] = useState<{ provider: string, error: string } | null>(null)
-  /** Whether the "hide all unusable" sweep is running. */
-  const [bulkPending, setBulkPending] = useState(false)
+  /** The error of the last switch action, shown on the card. */
+  const [actionError, setActionError] = useState('')
   const dragRef = useRef<{
     pointerId: number
     moved: boolean
@@ -250,35 +262,20 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open])
-
-  // ── corner snapping ───────────────────────────────────────────────────────
-  // The "换个角落" button is the keyboard- and touch-accessible way to move
-  // the float without dragging it.
-  const cycleCorner = useCallback(() => {
-    setPlacement(current => {
-      const corners: Corner[] = ['bottom-right', 'bottom-left', 'top-right', 'top-left']
-      const nearest = nearestCorner(current, viewport.width, viewport.height)
-      const index = corners.indexOf(nearest)
-      const next = cornerPlacement(corners[(index + 1) % corners.length], viewport.width, viewport.height)
-      writePlacement(next)
-      return next
-    })
-  }, [viewport.width, viewport.height])
-  // ── hide / restore a vendor's models ──────────────────────────────────────
+  // ── the master switch ─────────────────────────────────────────────────────
+  // One switch hides every unusable vendor's models, and turns them back. The
+  // write lands in the Channel Pack's model blacklist, which the model picker
   // reads on every listing — so the change lands in the composer without a
   // reload (the pack broadcasts `llm/adapters-updated` after the write).
-  const onSetHidden = useCallback(async (provider: string, hidden: boolean) => {
-    setPending({ provider, hidden })
-    setActionError(null)
+  const onToggleSwitch = useCallback(async () => {
+    setActionError('')
     try {
-      await setHidden(provider, hidden)
+      await setSwitch(!switchOn)
       refresh()
     } catch (error) {
-      setActionError({ provider, error: error instanceof Error ? error.message : String(error) })
-    } finally {
-      setPending(null)
+      setActionError(error instanceof Error ? error.message : String(error))
     }
-  }, [setHidden, refresh])
+  }, [setSwitch, switchOn, refresh])
 
   const lane = snapshot?.lane
   const vendors = snapshot?.vendors ?? []
@@ -287,25 +284,22 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
   // How many models are still cluttering the picker across every vendor.
   const visibleModels = vendors.reduce((sum, row) => sum + row.visibleModelCount, 0)
   // The vendors whose models are in the picker but cannot answer a turn.
+  //
+  // While the switch is on, the ones it hid are no longer in the picker, so
+  // they are not counted here — the count answers "how many are still listed
+  // but useless", which is what the user can still act on.
   const unusable = vendors.filter(isUnusable)
   const unusableModels = unusable.reduce((sum, row) => sum + row.visibleModelCount, 0)
-
-  // Hide every unusable vendor's models in one go.
-  const onHideUnusable = useCallback(async () => {
-    if (unusable.length === 0) return
-    setBulkPending(true)
-    setActionError(null)
-    try {
-      for (const row of unusable) {
-        await setHidden(row.vendor.id, true)
-      }
-      refresh()
-    } catch (error) {
-      setActionError({ provider: '', error: error instanceof Error ? error.message : String(error) })
-    } finally {
-      setBulkPending(false)
-    }
-  }, [unusable, setHidden, refresh])
+  // With the switch on, the vendors it hid are gone from the list — the list
+  // only shows what can still answer a turn.
+  //
+  // The set is the switch's *record*, not a fresh verdict: once the switch has
+  // hidden a vendor's models, that vendor reads as "closed" (the pack derives
+  // it from the blacklist) and a fresh verdict would call it usable again.
+  // The record is what the switch actually did, and it is what "off" restores.
+  const listed = switchOn
+    ? vendors.filter(row => !hiddenVendors.includes(row.vendor.id))
+    : vendors
   // The card opens *beside* the whale: on whichever side has room, and upward
   // from a whale in the lower half so it never runs off the top of the screen.
   const cardSide = placement.x > viewport.width / 2 ? 'left' : 'right'
@@ -351,17 +345,6 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
               ) : null}
             </div>
             <div className="mf-card-actions">
-              {unusable.length > 0 ? (
-                <button
-                  type="button"
-                  className="mf-sweep-btn"
-                  disabled={bulkPending}
-                  onClick={() => { void onHideUnusable() }}
-                  title={t('vendor.hideUnusable', { count: unusableModels })}
-                >
-                  {bulkPending ? '…' : t('vendor.hideUnusableShort')}
-                </button>
-              ) : null}
               <button
                 type="button"
                 className="mf-icon-btn"
@@ -374,12 +357,18 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
               </button>
               <button
                 type="button"
-                className="mf-icon-btn"
-                onClick={cycleCorner}
-                title={t('card.move')}
-                aria-label={t('card.move')}
+                role="switch"
+                aria-checked={switchOn}
+                className={`mf-switch ${switchOn ? 'is-on' : ''}`}
+                disabled={switchPending}
+                onClick={() => { void onToggleSwitch() }}
+                title={switchOn
+                  ? t('switch.off')
+                  : t('switch.on', { count: unusableModels })}
+                aria-label={switchOn ? t('switch.off') : t('switch.on', { count: unusableModels })}
               >
-                ⇄
+                <span className="mf-switch-knob" aria-hidden="true" />
+                <span className="mf-switch-text">{switchOn ? t('switch.onShort') : t('switch.offShort')}</span>
               </button>
             </div>
           </header>
@@ -388,16 +377,19 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
             <p className="mf-error" role="alert">{error}</p>
           ) : null}
 
+          {actionError !== '' ? (
+            <p className="mf-error" role="alert">{actionError}</p>
+          ) : null}
+
+          {switchOn && unusable.length > 0 ? (
+            <p className="mf-note">
+              {t('switch.hidden', { count: unusable.length, models: unusableModels })}
+            </p>
+          ) : null}
+
           <div className="mf-vendor-list">
-            {vendors.map(row => (
-              <VendorRowView
-                key={row.vendor.id}
-                row={row}
-                t={t}
-                pending={pending?.provider === row.vendor.id ? pending.hidden : null}
-                onSetHidden={onSetHidden}
-                error={actionError?.provider === row.vendor.id ? actionError.error : ''}
-              />
+            {listed.map(row => (
+              <VendorRowView key={row.vendor.id} row={row} t={t} />
             ))}
           </div>
 
@@ -436,7 +428,7 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
           aria-expanded={open}
           title={t('float.label')}
         >
-          <WhaleMark size={WHALE_SIZE} />
+          <WhaleMark size={WHALE_WIDTH} />
           <span className="mf-whale-badge" aria-hidden="true">
             {usable > 0 ? usable : '—'}
           </span>
@@ -446,35 +438,11 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
   )
 }
 
-/** The corner a position is closest to. */
-function nearestCorner(placement: Placement, viewportWidth: number, viewportHeight: number): Corner {
-  const right = placement.x > viewportWidth / 2
-  const bottom = placement.y > viewportHeight / 2
-  if (right && bottom) return 'bottom-right'
-  if (right) return 'top-right'
-  if (bottom) return 'bottom-left'
-  return 'top-left'
-}
-
 /** One vendor row of the card. */
-function VendorRowView({
-  row,
-  t,
-  pending,
-  onSetHidden,
-  error,
-}: {
-  row: VendorRow
-  t: PanelProps['t']
-  /** The in-flight action for this row: true = hiding, false = restoring, null = idle. */
-  pending: boolean | null
-  onSetHidden: (provider: string, hidden: boolean) => Promise<void>
-  error: string
-}): React.ReactElement {
+function VendorRowView({ row, t }: { row: VendorRow, t: PanelProps['t'] }): React.ReactElement {
   const state = stateOf(row)
   const balanceText = balanceTextOf(row, t)
   // A vendor whose models are all hidden is one the picker no longer lists.
-  // The button restores them; otherwise it hides them.
   const allHidden = row.modelCount > 0 && row.visibleModelCount === 0
   const hasModels = row.modelCount > 0
   return (
@@ -492,24 +460,11 @@ function VendorRowView({
             </span>
           ) : null}
         </span>
-        {error !== '' ? <span className="mf-vendor-error">{error}</span> : null}
       </div>
       <div className="mf-vendor-meta">
         <span className={`mf-vendor-state is-${state}`}>{stateLabel(state, t)}</span>
         <span className="mf-vendor-balance">{balanceText}</span>
       </div>
-      {hasModels ? (
-        <button
-          type="button"
-          className={`mf-hide-btn ${allHidden ? 'is-restore' : ''}`}
-          disabled={pending !== null}
-          onClick={() => { void onSetHidden(row.vendor.id, !allHidden) }}
-          title={allHidden ? t('vendor.restoreModels') : t('vendor.hideModels')}
-          aria-label={allHidden ? t('vendor.restoreModels') : t('vendor.hideModels')}
-        >
-          {pending === null ? (allHidden ? '↩' : '✕') : '…'}
-        </button>
-      ) : null}
     </div>
   )
 }

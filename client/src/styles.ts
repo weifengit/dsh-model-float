@@ -70,9 +70,7 @@ export const CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   .mf-card { transition: none; }
-  .mf-whale-body { animation: none !important; }
-  .mf-whale-tail { animation: none !important; }
-  .mf-whale-eye { animation: none !important; }
+  .mf-whale { animation: none !important; }
 }
 
 .mf-card-head {
@@ -103,11 +101,16 @@ export const CSS = `
   cursor: pointer;
   padding: 0;
 }
-/* The "clean up" sweep: one click hides every unusable vendor's models. */
-.mf-sweep-btn {
+/* The master switch: one control that hides (or restores) every unusable
+   vendor's models. It reads as a switch, not a button, because it is a state
+   the user leaves on — and that state has to be legible at a glance. */
+.mf-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 24px;
-  padding: 0 9px;
-  border-radius: 7px;
+  padding: 0 8px 0 3px;
+  border-radius: 999px;
   border: 1px solid var(--dsw-alias-border-l3, rgba(15, 23, 42, 0.14));
   background: transparent;
   color: var(--dsw-alias-label-secondary, #5b6472);
@@ -116,11 +119,27 @@ export const CSS = `
   cursor: pointer;
   white-space: nowrap;
 }
-.mf-sweep-btn:hover:not(:disabled) {
+.mf-switch:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover, rgba(15, 23, 42, 0.06));
   color: var(--dsw-alias-label-primary, #1f2430);
 }
-.mf-sweep-btn:disabled { opacity: 0.45; cursor: default; }
+.mf-switch:disabled { opacity: 0.5; cursor: default; }
+.mf-switch.is-on {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary, #067647) 45%, transparent);
+  color: var(--dsw-alias-state-success-primary, #067647);
+}
+.mf-switch-knob {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-tertiary, #8a93a2);
+  transition: background 140ms ease, transform 140ms ease;
+}
+.mf-switch.is-on .mf-switch-knob {
+  background: var(--dsw-alias-state-success-primary, #067647);
+  transform: translateX(1px);
+}
+.mf-switch-text { font-weight: 550; }
 
 .mf-icon-btn:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover, rgba(15, 23, 42, 0.06));
@@ -241,6 +260,11 @@ export const CSS = `
 .mf-foot-time { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, #8a93a2); }
 
 .mf-empty { margin: 0; padding: 10px 12px; font-size: 11.5px; color: var(--dsw-alias-label-tertiary, #8a93a2); }
+.mf-note {
+  margin: 0 12px 6px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary, #8a93a2);
+}
 
 /* ── the per-model list ─────────────────────────────────────────────────── */
 
@@ -305,42 +329,34 @@ export const CSS = `
   outline-offset: 3px;
 }
 
-.mf-whale { display: block; overflow: visible; }
-.mf-whale-body { transform-origin: 56px 52px; animation: mf-bob 3.6s ease-in-out infinite; }
-.mf-whale-tail { transform-origin: 32px 50px; animation: mf-sway 2.6s ease-in-out infinite; }
-.mf-whale-eye { animation: mf-blink 5.4s ease-in-out infinite; transform-origin: 63px 48px; }
-.mf-whale-spout { animation: mf-spout 3.6s ease-in-out infinite; transform-origin: 52px 21px; }
+/* The official mark: one path, so the whole whale animates as one piece. */
+.mf-whale {
+  display: block;
+  overflow: visible;
+  /* The mark is wider than it is tall; centre it in the square button. */
+  margin: 0 auto;
+  color: var(--dsw-alias-brand-text, #4d6bfe);
+  animation: mf-swim 3.8s ease-in-out infinite;
+}
 
-@keyframes mf-bob {
-  0%, 100% { transform: translateY(0) rotate(-1deg); }
+@keyframes mf-swim {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
   50% { transform: translateY(-4px) rotate(1.5deg); }
-}
-@keyframes mf-sway {
-  0%, 100% { transform: rotate(-7deg); }
-  50% { transform: rotate(9deg); }
-}
-@keyframes mf-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.08); }
-}
-@keyframes mf-spout {
-  0%, 100% { transform: translateY(0); opacity: 0.55; }
-  50% { transform: translateY(-3px); opacity: 0.9; }
 }
 
 .mf-whale-badge {
   position: absolute;
-  top: -2px;
-  right: -2px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
   border-radius: 999px;
   background: var(--dsw-alias-state-success-primary, #067647);
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  line-height: 20px;
+  line-height: 18px;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }

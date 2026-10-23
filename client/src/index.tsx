@@ -23,12 +23,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ModelFloatPanel, POLL_MS } from './panel.tsx'
 import {
   readSnapshot,
-  hideVendorModels,
-  restoreVendorModels,
-  readPanelHidden,
-  writePanelHidden,
+  isUnusable,
   readVendorModels,
-  VENDORS,
+  setVendorModelsDisabled,
+  readSwitch,
+  writeSwitch,
 } from './data.ts'
 import type { FloatSnapshot } from './data.ts'
 import { CSS } from './styles.ts'
@@ -51,6 +50,11 @@ const DICT = {
     'card.updated': '更新于 {time}',
     'card.noModels': '没有读到模型清单。',
     'vendor.on': '已接入',
+    'switch.onShort': '已清理',
+    'switch.offShort': '未清理',
+    'switch.on': '隐藏 {count} 个不可用厂商的模型，让模型选择器清爽一点',
+    'switch.off': '把之前隐藏的模型放回模型选择器',
+    'switch.hidden': '已隐藏 {count} 家不可用厂商的 {models} 个模型',
     'vendor.modelsVisible': '· {visible}/{total} 个模型',
     'vendor.modelsHidden': '· 已隐藏 {count} 个模型',
     'vendor.hideModels': '从模型选择器隐藏这家厂商的模型',
@@ -84,6 +88,11 @@ const DICT = {
     'card.updated': 'updated {time}',
     'card.noModels': 'No model roster was read.',
     'vendor.on': 'Connected',
+    'switch.onShort': 'Cleaned',
+    'switch.offShort': 'Not cleaned',
+    'switch.on': "Hide {count} unusable vendors' models, so the model picker gets shorter",
+    'switch.off': 'Put the hidden models back into the model picker',
+    'switch.hidden': '{models} models of {count} unusable vendors are hidden',
     'vendor.modelsVisible': '· {visible}/{total} models',
     'vendor.modelsHidden': '· {count} models hidden',
     'vendor.hideModels': "Hide this vendor's models from the model picker",
@@ -129,14 +138,37 @@ export function apply(ctx: Record<string, any>): void {
     const [snapshot, setSnapshot] = useState<FloatSnapshot | null>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    /** Whether the master switch is on — read from the Host, so it survives a restart. */
+    const [switchOn, setSwitchOn] = useState(false)
+    /**
+     * The vendors the switch hid.
+     *
+     * The record is the switch's own, not a fresh verdict: once a vendor's
+     * models are hidden the pack reports that vendor as "closed", so a fresh
+     * verdict would call it usable again and put it back into the list.
+     */
+    const [hiddenVendors, setHiddenVendors] = useState<string[]>([])
+    /** The same set in a ref, so the polling callback can read it. */
+    const hiddenVendorsRef = useRef<string[]>([])
+    /** Whether the switch is mid-flight. */
+    const [switchPending, setSwitchPending] = useState(false)
     const mounted = useRef(true)
+    /**
+     * The latest reading, kept in a ref so the switch callback can read it
+     * without being re-created on every poll (which would remount the button
+     * and drop a click in flight).
+     */
+    const snapshotRef = useRef<FloatSnapshot | null>(null)
 
     const refresh = useCallback(() => {
       setLoading(true)
       const controller = new AbortController()
-      void readSnapshot(controller.signal)
+      // The switch's own vendor set goes along, so a vendor it hid reads as
+      // "hidden" rather than "turned off".
+      void readSnapshot(controller.signal, new Set(hiddenVendorsRef.current))
         .then(result => {
           if (!mounted.current) return
+          snapshotRef.current = result
           setSnapshot(result)
           setError(result.error)
         })
@@ -150,63 +182,75 @@ export function apply(ctx: Record<string, any>): void {
     }, [])
 
     /**
-     * Hide (or restore) one vendor's models in the chat composer's model picker.
+     * Turn the master switch on or off.
+     *
+     * On: every vendor that cannot answer a turn right now (not connected, or
+     * no credit left) has its models hidden from the chat composer's model
+     * picker. Off: exactly the models the switch hid come back.
      *
      * The write lands in the Channel Pack's model blacklist, which the picker
      * reads on every listing. The pack broadcasts `llm/adapters-updated` after
      * the write, so the composer refreshes on its own — no page reload.
      *
-     * The panel keeps its own record of the ids it hid, so "restore" never
-     * resurrects a model the user hid by hand in the settings page.
+     * The switch's own state (on/off, and which models it hid) lives on the
+     * Host, so it survives a DSH restart: a browser-local switch would come
+     * back "off" after a restart with the models still hidden.
      */
-    const setHidden = useCallback(async (provider: string, hidden: boolean) => {
-      if (hidden) {
-        // Read the catalog first, so the panel's own record is exactly the set
-        // of models that were visible before the write — including the ones a
-        // previous sweep already hid.
-        const models = await readVendorModels(provider)
-        const visible = models.filter(model => !model.disabled && !model.dead).map(model => model.id)
-        const result = await hideVendorModels(provider)
-        if (result.error !== '') throw new Error(result.error)
-        writePanelHidden(provider, [...new Set([...readPanelHidden(provider), ...visible])])
-        return
-      }
-      const result = await restoreVendorModels(provider)
-      if (result.error !== '') throw new Error(result.error)
-    }, [])
-
-    /**
-     * Reconcile the panel's record with the host's actual blacklist.
-     *
-     * The record lives in `localStorage` and the blacklist lives on the host,
-     * so the two can drift: another browser, the settings page, or a wiped
-     * profile can change the blacklist behind the panel's back. The record is
-     * only ever used to *restore* what the panel hid, so it must not claim a
-     * model the panel did not hide — or the restore would open a model the
-     * user closed by hand.
-     *
-     * The reconciliation is: the record keeps only the ids that are still
-     * hidden on the host.
-     */
-    const reconcileHidden = useCallback(async () => {
-      for (const vendor of VENDORS) {
-        const recorded = readPanelHidden(vendor.id)
-        if (recorded.length === 0) continue
-        try {
-          const models = await readVendorModels(vendor.id)
-          const disabledIds = new Set(models.filter(model => model.disabled).map(model => model.id))
-          const stillHidden = recorded.filter(id => disabledIds.has(id))
-          if (stillHidden.length !== recorded.length) writePanelHidden(vendor.id, stillHidden)
-        } catch {
-          /* the host is unreachable; keep the record and try again next time */
+    const setSwitch = useCallback(async (on: boolean) => {
+      setSwitchPending(true)
+      try {
+        if (on) {
+          // Hide the models of the vendors that cannot answer a turn right now,
+          // and record exactly which ones so "off" restores them and nothing
+          // else. The unusable set comes from the last reading — the same
+          // verdict the panel shows — so the switch and the list always agree.
+          const current = snapshotRef.current
+          const unusable = current === null ? [] : current.vendors.filter(isUnusable)
+          const hidden: Record<string, string[]> = {}
+          for (const row of unusable) {
+            const models = await readVendorModels(row.vendor.id)
+            const visible = models.filter(model => !model.disabled && !model.dead).map(model => model.id)
+            if (visible.length === 0) continue
+            const result = await setVendorModelsDisabled(row.vendor.id, visible, true)
+            if (result.error !== '') throw new Error(`${row.vendor.name}: ${result.error}`)
+            hidden[row.vendor.id] = visible
+          }
+          await writeSwitch({ enabled: true, hidden })
+          // The switch's own state is what the panel shows; the write is the
+          // only thing that flipped it.
+          setSwitchOn(true)
+          hiddenVendorsRef.current = Object.keys(hidden)
+          setHiddenVendors(hiddenVendorsRef.current)
+        } else {
+          // Restore exactly what the switch hid.
+          const state = await readSwitch()
+          for (const [provider, ids] of Object.entries(state.hidden)) {
+            const result = await setVendorModelsDisabled(provider, ids, false)
+            if (result.error !== '') throw new Error(`${provider}: ${result.error}`)
+          }
+          await writeSwitch({ enabled: false, hidden: {} })
+          setSwitchOn(false)
+          hiddenVendorsRef.current = []
+          setHiddenVendors([])
         }
+      } finally {
+        setSwitchPending(false)
       }
     }, [])
 
     useEffect(() => {
       mounted.current = true
       refresh()
-      void reconcileHidden()
+      // Read the switch's durable state from the Host. When it is on, the
+      // models it hid are *still* hidden — the blacklist lives on the Host
+      // too, so a restart does not undo the switch — and the panel must show
+      // the switch as on, not off.
+      void readSwitch().then(state => {
+        if (!mounted.current) return
+        setSwitchOn(state.enabled)
+        hiddenVendorsRef.current = Object.keys(state.hidden)
+        setHiddenVendors(hiddenVendorsRef.current)
+      })
       // A slow heartbeat keeps the numbers honest: balances move whenever a
       // model is used elsewhere, and a stale count reads as "I have more
       // quota than I do".
@@ -223,7 +267,7 @@ export function apply(ctx: Record<string, any>): void {
         window.clearInterval(timer)
         document.removeEventListener('visibilitychange', onVisible)
       }
-    }, [refresh, reconcileHidden])
+    }, [refresh])
 
     return (
       <ModelFloatPanel
@@ -231,7 +275,10 @@ export function apply(ctx: Record<string, any>): void {
         loading={loading}
         error={error}
         refresh={refresh}
-        setHidden={setHidden}
+        switchOn={switchOn}
+        hiddenVendors={hiddenVendors}
+        switchPending={switchPending}
+        setSwitch={setSwitch}
         t={t}
       />
     )

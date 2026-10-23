@@ -1,21 +1,24 @@
 /**
  * Model Float — Host half.
  *
- * The feature is entirely a browser surface: a draggable whale-girl that floats
- * over the DSH shell and, on hover, lists every free-model vendor with its
- * connection state and remaining credit. There is nothing for the Host to do
- * beyond existing, so this half is deliberately empty.
+ * The feature is a floating panel in the web shell, but one piece of it cannot
+ * live in the browser: the master switch's state has to outlive a page reload
+ * *and* a DSH restart, because the blacklist it mirrors lives on the host. A
+ * browser-local switch would come back "off" after a restart with the models
+ * still hidden — a state the user can neither explain nor undo.
+ *
+ * So the host owns the switch's state (a small JSON file under the harness
+ * home) and serves it over one tiny same-origin route. The browser half reads
+ * it on mount and writes it when the switch is toggled.
  *
  * @module index.js
  */
 
-/** No host services are required. */
-export const inject = []
+import fs from 'node:fs'
+import path from 'node:path'
+import { JsonStore, INITIAL_STATE, STATE_FILE, DATA_DIR_NAME, normalizeState, resolveDshHome } from './store.js'
 
-/**
- * Apply the (empty) node half.
- *
- * @param {unknown} _ctx - host context, unused.
- * @param {Record<string, unknown>} _config - plugin config, unused.
- */
-export function apply(_ctx, _config = {}) {}
+export { name, version, inject, apply } from './host.js'
+
+/** Re-exported for tests and for the host half's own use. */
+export { JsonStore, INITIAL_STATE, STATE_FILE, DATA_DIR_NAME, normalizeState, resolveDshHome }

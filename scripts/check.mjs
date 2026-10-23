@@ -90,14 +90,27 @@ console.log('bundle shape')
 
 console.log('host half')
 {
-  const out = join(root, 'src', 'index.js')
+  const out = join(root, 'src', 'host.js')
   if (!existsSync(out)) {
     failures += 1
-    console.error('  FAIL src/index.js is missing')
+    console.error('  FAIL src/host.js is missing')
   } else {
     const text = readFileSync(out, 'utf8')
     check('exports apply()', /export function apply/.test(text))
     check('exports inject', /export const inject/.test(text))
+    // The switch's state must live on the Host, or a restart would leave the
+    // models hidden with the switch reading "off".
+    check('serves the switch state over a route', text.includes('API_PREFIX'))
+    check('persists the state in a file', text.includes('JsonStore'))
+  }
+  const store = join(root, 'src', 'store.js')
+  if (!existsSync(store)) {
+    failures += 1
+    console.error('  FAIL src/store.js is missing')
+  } else {
+    const text = readFileSync(store, 'utf8')
+    check('the store survives a restart', text.includes('class JsonStore'))
+    check('the store writes atomically', text.includes('rename'))
   }
 }
 
@@ -109,12 +122,25 @@ console.log('model hiding')
   // A loop of single-model writes would be N document writes and N catalog
   // broadcasts — the batch endpoint is the only sane path for a 500-model vendor.
   check('does not loop single-model writes', !data.includes("'model.setDisabled'"))
-  check('records what the panel hid', data.includes('PANEL_HIDDEN_PREFIX'))
-  check('restores everything when the record is gone', data.includes('hidden.length === 0'))
+  check('keeps the switch state on the Host', data.includes('SWITCH_API'))
+  check('reads the switch state from the Host', data.includes('readSwitch'))
+  check('writes the switch state to the Host', data.includes('writeSwitch'))
 
   const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
-  check('the panel offers a per-vendor hide control', panel.includes('mf-hide-btn'))
-  check('the panel offers the bulk sweep', panel.includes('mf-sweep-btn'))
+  check('the panel offers the master switch', panel.includes('mf-switch'))
+  // The list is filtered by the switch's *record* (the vendors it hid), not
+  // by a fresh verdict: a hidden vendor reads as "closed", so a fresh verdict
+  // would call it usable and put it back.
+  check('the switch hides its own vendors from the list', panel.includes('hiddenVendors.includes'))
+  // The per-vendor buttons are gone: the switch is the only control.
+  check('no per-vendor hide button remains', !panel.includes('mf-hide-btn'))
+
+  const entry = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
+  check('the switch state is read from the Host', entry.includes('readSwitch'))
+  check('the switch state is written to the Host', entry.includes('writeSwitch'))
+
+  const whale = readFileSync(join(root, 'client', 'src', 'whale.tsx'), 'utf8')
+  check('the float wears the official DeepSeek mark', whale.includes('FISH_LOGO_PATH'))
 }
 
 if (failures > 0) {

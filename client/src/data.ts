@@ -294,10 +294,13 @@ interface RawSummary {
 }
 
 /** Read the free-lane roster and per-vendor credit in one pass. */
-export async function readSnapshot(signal?: AbortSignal): Promise<FloatSnapshot> {
+export async function readSnapshot(
+  signal?: AbortSignal,
+  hiddenByPanel: ReadonlySet<string> = new Set(),
+): Promise<FloatSnapshot> {
   const [laneResult, vendorRows] = await Promise.all([
     readLane(signal),
-    readVendors(signal),
+    readVendors(signal, hiddenByPanel),
   ])
 
   if (laneResult.error !== '' && vendorRows.length === 0) {
@@ -375,8 +378,18 @@ async function readLane(signal?: AbortSignal): Promise<{
   }
 }
 
-/** Read every vendor's status and balance. */
-async function readVendors(signal?: AbortSignal): Promise<VendorRow[]> {
+/**
+ * Read every vendor's status and balance.
+ *
+ * @param signal - aborts the reads.
+ * @param hiddenByPanel - the vendors the master switch hid. A vendor the pack
+ *   reports as "closed" is one of these when the switch took it out — the
+ *   blacklist is why it reads as closed, not the vendor's own health.
+ */
+async function readVendors(
+  signal: AbortSignal | undefined,
+  hiddenByPanel: ReadonlySet<string>,
+): Promise<VendorRow[]> {
 
   // A transport failure (the pack is not mounted, the socket dropped) is not a
   // per-vendor fact: it would blank the whole table, so it is caught here and
@@ -426,13 +439,12 @@ async function readVendors(signal?: AbortSignal): Promise<VendorRow[]> {
       }
     }
     // A vendor whose every model is hidden is reported as `closed` by the pack —
-    // but that verdict is the *blacklist* talking, not the vendor's health. When
-    // this panel is the one that hid them, the honest label is "hidden", not
-    // "turned off": the vendor is still connected, its models are just not in the
-    // picker.
+    // but that verdict is the *blacklist* talking, not the vendor's health. The
+    // master switch knows which vendors it hid, so the honest label is "hidden",
+    // not "turned off": the vendor is still connected, its models are just not in
+    // the picker.
     if (entry.closed === true) {
-      const hiddenByPanel = readPanelHidden(vendor.id)
-      const state: VendorState = hiddenByPanel.length > 0 ? 'hidden' : 'closed'
+      const state: VendorState = hiddenByPanel.has(vendor.id) ? 'hidden' : 'closed'
       return { ...base, state }
     }
 
@@ -543,98 +555,56 @@ export async function setVendorModelsDisabled(
   }
 }
 
-/**
- * Hide every model of a vendor that is currently visible.
- *
- * The models that are *already* hidden are left alone: restoring them later
- * must not resurrect a model the user hid by hand in the settings page.
- */
-export async function hideVendorModels(provider: string): Promise<HideResult> {
-  const models = await readVendorModels(provider)
-  const visible = models.filter(model => !model.disabled && !model.dead).map(model => model.id)
-  return setVendorModelsDisabled(provider, visible, true)
+/** The Host route serving the master switch's durable state. */
+export const SWITCH_API = '/api/model-float/switch'
+
+/** The persisted state of the master switch. */
+export interface SwitchState {
+  /** Whether the switch is on: unusable vendors' models are hidden. */
+  readonly enabled: boolean
+  /** The models the switch hid, per vendor — so "off" restores exactly them. */
+  readonly hidden: Readonly<Record<string, readonly string[]>>
 }
+
+/** The switch's state when it has never been touched: off. */
+export const DEFAULT_SWITCH: SwitchState = { enabled: false, hidden: {} }
 
 /**
- * Restore every model of a vendor that this panel hid.
+ * Read the master switch's durable state from the Host.
  *
- * ⚠️ The blacklist is shared with the settings page: the user may have hidden
- * models by hand there, and a blanket "restore everything" would undo those too.
- * So the panel keeps its own record of what *it* hid, and only ever restores
- * that set. The record lives in `localStorage` — the blacklist itself lives on
- * the host, and the panel's own actions are what this record tracks.
- *
- * ⚠️ The record can be missing — a fresh browser, a cleared site data, or a
- * profile wiped between the hide and the restore. Then the panel cannot tell
- * "the user hid this by hand" from "this panel hid it", and the honest answer is
- * to restore *everything* that is hidden: the models were hidden by *some*
- * action, and leaving them hidden forever is the worse failure. The user can
- * always re-hide what they actually wanted hidden.
+ * The Host owns the truth: the switch's state has to outlive a DSH restart,
+ * and the blacklist it mirrors lives on the Host too. A browser-local switch
+ * would come back "off" after a restart with the models still hidden.
  */
-export async function restoreVendorModels(provider: string): Promise<HideResult> {
-  const hidden = readPanelHidden(provider)
-  let targets: string[]
+export async function readSwitch(): Promise<SwitchState> {
   try {
-    const models = await readVendorModels(provider)
-    const disabledIds = models.filter(model => model.disabled).map(model => model.id)
-    if (hidden.length === 0) {
-      // No record: restore every hidden model of this vendor.
-      targets = disabledIds
-    } else {
-      // With a record: restore only the models the panel hid that are *still*
-      // hidden — a model the user re-opened by hand must not be touched.
-      const recorded = new Set(hidden)
-      targets = disabledIds.filter(id => recorded.has(id))
+    const response = await fetch(SWITCH_API, { headers: { accept: 'application/json' } })
+    if (!response.ok) return DEFAULT_SWITCH
+    const payload = await response.json() as Partial<SwitchState>
+    const hidden: Record<string, string[]> = {}
+    for (const [provider, ids] of Object.entries(payload.hidden ?? {})) {
+      if (Array.isArray(ids)) {
+        hidden[provider] = ids.filter((id): id is string => typeof id === 'string')
+      }
     }
-  } catch (error) {
-    if (hidden.length === 0) return { changed: 0, error: messageOf(error) }
-    targets = hidden
-  }
-  if (targets.length === 0) {
-    writePanelHidden(provider, [])
-    return { changed: 0, error: '' }
-  }
-  const result = await setVendorModelsDisabled(provider, targets, false)
-  if (result.error === '') {
-    // Keep the ids that failed to open (a model that vanished from the catalog)
-    // out of the record, and drop the ones we just opened.
-    const opened = new Set(targets)
-    writePanelHidden(provider, hidden.filter(id => !opened.has(id)))
-  }
-  return result
-}
-/** The localStorage key prefix holding the models this panel hid. */
-const PANEL_HIDDEN_PREFIX = 'dsh-model-float:hidden:v1:'
-
-/** The models this panel hid from one vendor. */
-export function readPanelHidden(provider: string): string[] {
-  try {
-    const raw = window.localStorage.getItem(PANEL_HIDDEN_PREFIX + provider)
-    if (raw === null) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
+    return { enabled: payload.enabled === true, hidden }
   } catch {
-    return []
+    return DEFAULT_SWITCH
   }
 }
 
-/** Record (or clear) the models this panel hid from one vendor. */
-export function writePanelHidden(provider: string, modelIds: readonly string[]): void {
-  try {
-    if (modelIds.length === 0) {
-      window.localStorage.removeItem(PANEL_HIDDEN_PREFIX + provider)
-      return
-    }
-    window.localStorage.setItem(PANEL_HIDDEN_PREFIX + provider, JSON.stringify([...modelIds]))
-  } catch {
-    /* the record is a convenience; the blacklist itself is on the host */
-  }
+/** Write the master switch's durable state to the Host. */
+export async function writeSwitch(state: SwitchState): Promise<SwitchState> {
+  const response = await fetch(SWITCH_API, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled: state.enabled, hidden: state.hidden }),
+  })
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim())
+  const payload = await response.json() as Partial<SwitchState>
+  return { enabled: payload.enabled === true, hidden: payload.hidden ?? {} }
 }
 
-/** Forget the models this panel hid from one vendor. */
-export function clearPanelHidden(provider: string): void {
-  writePanelHidden(provider, [])
-}
 
 /** Coerce a possibly-absent number into a number or null. */
 function numeric(value: unknown): number | null {

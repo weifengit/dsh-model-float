@@ -1,10 +1,14 @@
 /**
- * Model Float — the whale-girl mark.
+ * Model Float — the DeepSeek mark.
  *
- * A hand-drawn SVG whale girl: a blue whale body with a white belly, a bob of
- * hair with a fringe, a proper whale fluke at the back, a pectoral fin and a
- * small sailor bow. It is drawn inline (no asset fetch, no build step) and
- * animates in CSS — the fluke sways, the body bobs, and the eye blinks.
+ * The official DeepSeek whale, taken verbatim from the harness's own brand
+ * package (`@deepseek-ai/dsh-client-ui-primitives`, exported as
+ * `FISH_LOGO_PATH` / `FISH_LOGO_VIEWBOX`). Using the official geometry means
+ * the float wears the same whale the sidebar does, rather than a lookalike.
+ *
+ * The path is inlined (no asset fetch, no build step) and coloured with
+ * `currentColor`, so it follows the shell's theme. It animates in CSS — the
+ * whale bobs, and the badge counts the usable vendors.
  *
  * The mark is purely decorative: the float's accessible name comes from the
  * button that wraps it, so the SVG itself is `aria-hidden`.
@@ -14,132 +18,38 @@
 
 import React from 'react'
 
+/** The official mark's native viewBox, in user units. */
+const VIEWBOX = { width: 23.16, height: 17.04 }
+
 /**
- * The whale-girl mark.
+ * The official DeepSeek whale silhouette.
  *
- * @param props.size - the rendered edge length in px.
+ * Copied from `@deepseek-ai/dsh-client-ui-primitives`'s `FISH_LOGO_PATH`
+ * (MIT-licensed, part of the harness). The primitives package is a *runtime*
+ * module, so its export cannot be imported from a plugin bundle without
+ * declaring it as an external; inlining the path keeps the plugin
+ * self-contained and byte-identical to the official artwork.
  */
-export function WhaleMark({ size = 64 }: { size?: number }): React.ReactElement {
+const FISH_LOGO_PATH = 'M22.9168 1.43018C22.6713 1.31018 22.5658 1.53918 22.4223 1.65519C22.3733 1.69269 22.3318 1.74169 22.2903 1.78669C21.9317 2.1697 21.5127 2.42121 20.9657 2.39121C20.1657 2.34621 19.4827 2.59771 18.8787 3.20973C18.7502 2.45521 18.3236 2.0047 17.6746 1.71569C17.3351 1.56568 16.9916 1.41518 16.7536 1.08867C16.5876 0.856163 16.5421 0.597155 16.4591 0.341647C16.4061 0.187643 16.3536 0.0301382 16.1761 0.00363739C15.9836 -0.0263635 15.9081 0.135141 15.8326 0.270145C15.5306 0.822162 15.4136 1.43018 15.4251 2.0462C15.4516 3.43174 16.0366 4.53527 17.1991 5.3203C17.3311 5.4103 17.3651 5.5003 17.3236 5.63181C17.2441 5.90231 17.1501 6.16482 17.0671 6.43533C17.0141 6.60784 16.9351 6.64584 16.7501 6.57033C16.1121 6.30383 15.5611 5.90931 15.074 5.4328C14.2475 4.63328 13.5 3.75075 12.568 3.05973C12.349 2.89822 12.13 2.74822 11.9034 2.60522C10.9524 1.68169 12.028 0.923165 12.277 0.833162C12.5375 0.739159 12.3675 0.41615 11.5259 0.42015C10.6844 0.42365 9.91439 0.705658 8.93286 1.08117C8.78935 1.13767 8.63835 1.17867 8.48384 1.21267C7.59332 1.04367 6.66829 1.00617 5.70226 1.11517C3.88321 1.31768 2.43016 2.1777 1.36213 3.64575C0.0790928 5.4103 -0.222916 7.41536 0.146595 9.50642C0.535106 11.7105 1.66014 13.535 3.38869 14.9616C5.18125 16.4406 7.24581 17.1657 9.60138 17.0266C11.0319 16.9441 12.6245 16.7526 14.421 15.2321C14.874 15.4576 15.3496 15.5476 16.1381 15.6151C16.7456 15.6716 17.3306 15.5851 17.7836 15.4911C18.4931 15.3411 18.4441 14.6841 18.1876 14.5636C16.1081 13.595 16.5646 13.9891 16.1496 13.67C17.2061 12.42 18.8202 10.1979 19.3182 7.17235C19.3672 6.83834 19.4297 6.36783 19.4222 6.09732C19.4182 5.93231 19.4562 5.86831 19.6447 5.84931C20.1657 5.78931 20.6712 5.64681 21.1357 5.3913C22.4833 4.65528 23.0268 3.44624 23.1548 1.9972C23.1738 1.77569 23.1508 1.54668 22.9168 1.43018ZM11.1749 14.4736C9.15936 12.889 8.18184 12.3675 7.77832 12.39C7.40081 12.4125 7.46881 12.8445 7.55182 13.126C7.63882 13.404 7.75182 13.5955 7.91033 13.8396C8.01983 14.0011 8.09533 14.2411 7.80083 14.4216C7.15181 14.8231 6.02327 14.2866 5.97027 14.2601C4.65673 13.4865 3.5587 12.4655 2.78467 11.069C2.03715 9.72493 1.60314 8.28289 1.53164 6.74384C1.51264 6.37233 1.62214 6.24082 1.99215 6.17332C2.47916 6.08332 2.98118 6.06432 3.46769 6.13582C5.52476 6.43633 7.27581 7.35586 8.74385 8.8129C9.58188 9.64243 10.2159 10.634 10.8689 11.6025C11.5634 12.631 12.3105 13.611 13.262 14.4146C13.598 14.6961 13.866 14.9101 14.1225 15.0681C13.349 15.1546 12.058 15.1731 11.1749 14.4746L11.1749 14.4736ZM12.141 8.25988C12.141 8.09488 12.273 7.96338 12.439 7.96338C12.4765 7.96338 12.5105 7.97088 12.541 7.98188C12.5825 7.99688 12.6205 8.01938 12.6505 8.05338C12.7035 8.10588 12.7335 8.18088 12.7335 8.25988C12.7335 8.42489 12.6015 8.55639 12.4355 8.55639C12.2695 8.55639 12.141 8.42489 12.141 8.25988ZM15.1415 9.79893C14.949 9.87793 14.7565 9.94544 14.5715 9.95294C14.2845 9.96794 13.9715 9.85143 13.8015 9.70893C13.5375 9.48742 13.3485 9.36342 13.2695 8.97691C13.2355 8.8119 13.2545 8.55639 13.2845 8.40989C13.3525 8.09438 13.277 7.89187 13.0545 7.70787C12.8735 7.55786 12.643 7.51636 12.39 7.51636C12.2955 7.51636 12.209 7.47486 12.1445 7.44136C12.039 7.38886 11.9519 7.25735 12.035 7.09585C12.0615 7.04335 12.19 6.91584 12.22 6.89334C12.5635 6.69784 12.9595 6.76184 13.326 6.90834C13.6655 7.04735 13.9225 7.30236 14.292 7.66287C14.6695 8.09838 14.7375 8.21838 14.9525 8.54539C15.1225 8.8009 15.277 9.06341 15.3831 9.36392C15.4471 9.55142 15.3641 9.70493 15.1415 9.79893Z'
+
+/**
+ * The DeepSeek whale mark.
+ *
+ * @param props.size - the rendered width in px; the height keeps the mark's
+ *   native 23.16:17.04 ratio.
+ */
+export function WhaleMark({ size = 62 }: { size?: number }): React.ReactElement {
   return (
     <svg
       className="mf-whale"
       width={size}
-      height={size}
-      viewBox="0 0 100 100"
+      height={size * VIEWBOX.height / VIEWBOX.width}
+      viewBox={`0 0 ${VIEWBOX.width} ${VIEWBOX.height}`}
+      fill="none"
       aria-hidden="true"
       focusable="false"
     >
-      <defs>
-        <linearGradient id="mf-body" x1="0.2" y1="0" x2="0.6" y2="1">
-          <stop offset="0%" stopColor="#8ec2ff" />
-          <stop offset="55%" stopColor="#5a95e8" />
-          <stop offset="100%" stopColor="#3b74c9" />
-        </linearGradient>
-        <linearGradient id="mf-belly" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="100%" stopColor="#dbe9ff" />
-        </linearGradient>
-        <linearGradient id="mf-hair" x1="0.1" y1="0" x2="0.9" y2="1">
-          <stop offset="0%" stopColor="#6a8fe0" />
-          <stop offset="60%" stopColor="#4a6ec4" />
-          <stop offset="100%" stopColor="#33489a" />
-        </linearGradient>
-      </defs>
-
-      {/* ── the fluke: a proper two-lobed whale tail, hinged at the back ── */}
-      <g className="mf-whale-tail">
-        <path
-          d="M32 50 C18 46 8 36 2 22 C16 24 27 32 34 41 C37 37 41 34 46 32
-             C43 40 38 45 34 50 C38 55 43 60 46 68 C41 66 37 63 34 59
-             C27 68 16 76 2 78 C8 64 18 55 32 50 Z"
-          fill="url(#mf-hair)"
-        />
-        <path
-          d="M30 50 C24 48 18 46 14 42 C18 46 22 48 26 50 Z"
-          fill="#ffffff"
-          opacity="0.28"
-        />
-      </g>
-
-      {/* ── the body ── */}
-      <g className="mf-whale-body">
-        {/* the whale's head-and-body mass, facing right */}
-        <path
-          d="M30 50 C30 33 44 24 60 24 C76 24 88 33 90 45 C91 52 89 58 85 62
-             C78 71 66 76 54 76 C39 76 30 65 30 50 Z"
-          fill="url(#mf-body)"
-        />
-        {/* the pale belly, sweeping under the chin */}
-        <path
-          d="M78 58 C74 69 64 75 53 75 C42 75 34 67 31 57 C38 63 47 66 57 65
-             C67 64 74 62 78 58 Z"
-          fill="url(#mf-belly)"
-        />
-        {/* the mouth line, along the whale's jaw */}
-        <path
-          d="M84 60 C80 64 74 66 68 66"
-          stroke="#2b4f9e"
-          strokeWidth="1.6"
-          fill="none"
-          strokeLinecap="round"
-          opacity="0.55"
-        />
-        {/* the pectoral fin */}
-        <path
-          d="M58 70 C54 78 56 84 62 85 C66 80 66 74 64 70 Z"
-          fill="#4a86d8"
-        />
-        {/* the blowhole spout */}
-        <g className="mf-whale-spout" opacity="0.75">
-          <circle cx="52" cy="21" r="2" fill="#cfe6ff" />
-          <circle cx="47" cy="17" r="1.6" fill="#cfe6ff" />
-          <circle cx="57" cy="16" r="1.4" fill="#cfe6ff" />
-        </g>
-      </g>
-
-      {/* ── the hair: a bob with a fringe, drawn over the body's top ── */}
-      <g className="mf-whale-hair">
-        <path
-          d="M32 46 C30 30 42 19 57 18 C73 17 86 26 88 40 C89 46 89 51 88 55
-             C86 47 82 40 75 36 C66 31 54 31 45 35 C39 38 35 42 32 46 Z"
-          fill="url(#mf-hair)"
-        />
-        {/* the fringe over the brow */}
-        <path
-          d="M44 35 C52 27 66 25 76 32 C70 30 63 31 58 35 C52 40 46 42 40 43
-             C41 40 42 37 44 35 Z"
-          fill="#5578c9"
-        />
-        {/* the side locks framing the face */}
-        <path d="M33 43 C29 52 29 61 33 68 C36 60 36 51 37 45 Z" fill="#3f60b5" />
-        <path d="M87 41 C91 51 90 60 86 67 C83 59 83 50 83 45 Z" fill="#3f60b5" />
-      </g>
-
-      {/* ── the face ── */}
-      <g className="mf-whale-face">
-        <g className="mf-whale-eye">
-          <ellipse cx="63" cy="48" rx="5" ry="6.2" fill="#1b2a4a" />
-          <ellipse cx="65" cy="45" rx="2" ry="2.2" fill="#ffffff" />
-          <path
-            d="M58 41.5 C60 39.5 66 39.5 68 41.5"
-            stroke="#1b2a4a"
-            strokeWidth="1.4"
-            fill="none"
-            strokeLinecap="round"
-          />
-        </g>
-        <ellipse cx="74" cy="55" rx="5" ry="3" fill="#ff9ec4" opacity="0.55" />
-        <path
-          d="M67 57 Q70 60 73 57"
-          stroke="#1b2a4a"
-          strokeWidth="1.6"
-          fill="none"
-          strokeLinecap="round"
-        />
-        {/* a little sailor collar with a bow */}
-        <path d="M72 63 C76 64 80 66 81 68 C77 70 72 69 69 67 Z" fill="#ffffff" opacity="0.9" />
-        <path d="M74 66 L78 63 L80 68 L75 70 Z" fill="#ff7fa8" />
-      </g>
+      <path d={FISH_LOGO_PATH} fill="currentColor" />
     </svg>
   )
 }
