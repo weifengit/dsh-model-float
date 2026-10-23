@@ -1,0 +1,9 @@
+# dsh-model-float bundle patch.
+#
+# This plugin is browser-only: the whole feature is a floating panel in the web
+# shell, and the host half has nothing to do. The row still needs a Host entry
+# because the client-module scanner keys off the Loader entry — a package with
+# no row never reaches the browser half.
+- insert:
+    - id: dsh-model-float
+      name: dsh-model-float

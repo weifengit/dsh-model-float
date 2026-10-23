@@ -1,0 +1,119 @@
+# dsh-model-float
+
+在 DSH 主界面挂一只可拖动的**鲸鱼娘浮动面板**，鼠标放上去就能看到白嫖模型
+各厂商的接入状态、剩余积分与余额——不用再一次次点进
+「设置 → Our Free Model → 白嫖模型接入」。
+
+> A draggable whale-girl floating panel in the DeepSeek Harness web shell.
+> Hover it and every free-model vendor shows up with its connection state and
+> the credit it still has.
+
+---
+
+## 效果
+
+| | |
+|---|---|
+| 浮动鲸鱼娘 | 挂在屏幕任意位置，可拖动、可换角，位置记在浏览器本地 |
+| 悬停展开 | 鼠标移上去（键盘聚焦或点击同样）即展开卡片 |
+| 厂商表 | 13 家渠道各自的接入状态 + 剩余积分/余额（按各家自己的单位） |
+| 模型可用性 | 可展开每个模型的可用 / 地区限制 / 不可用 / 限流 |
+
+![面板](docs/screenshot.png)
+
+## 数据来源
+
+面板不新增任何后端接口，只读宿主机**已经在提供**的两个同源数据面：
+
+| 数据面 | 回答的问题 |
+|---|---|
+| `GET /api/our-free-model/summary` | 免费通道现在有哪些模型？每个在本机**能不能用**？ |
+| `POST /api/channel-pack` → `provider.status` | 每家厂商有多少模型、多少账号、启用了吗？ |
+| `POST /api/channel-pack` → `credits.balances` | 每家厂商的账号**还剩多少**积分/余额？ |
+
+也就是说，面板显示的就是「白嫖模型接入」那一页的数据，只是把它压缩成一眼能看懂的
+样子。要看更多（领积分、登录、模型黑名单），仍然是回设置页。
+
+**依赖**：本插件需要 `dsh-our-free-model` 在场（它提供上面两个数据面）。缺了它，
+面板会显示「读取失败」，其余部分照常工作。
+
+## 安装
+
+```bash
+# 在 profile 目录里加一条 link 依赖
+cd ~/.dsh/profiles/web
+python3 - <<'PY'
+import json, collections
+p = 'package.json'
+d = json.load(open(p), object_pairs_hook=collections.OrderedDict)
+d['dependencies']['dsh-model-float'] = 'link:/absolute/path/to/modelfloat'
+b = d['dsh']['profile']['bundles']
+if 'dsh-model-float' not in b:
+    b.insert(b.index('dsh-our-free-model') + 1, 'dsh-model-float')
+json.dump(d, open(p, 'w'), indent=2, ensure_ascii=False)
+open(p, 'a').write('\n')
+PY
+pnpm install
+```
+
+然后把本包挂进 profile 的 `bundles`（见上一步已写好的 `package.json`），重启
+`dsh web`。开发中也可以用 `--patch` 临时挂载。
+
+## 开发
+
+```bash
+pnpm install     # esbuild + react + typescript
+pnpm build       # client/src → dist/client.js
+pnpm check       # tsc --noEmit
+```
+
+产物 `dist/client.js` 必须是客户端模块系统认得的 **classic-script** 形态：
+
+```js
+window.__ModuleLoader__.load({ id: 'dsh-model-float', factory: require => { /* … */ } })
+```
+
+`react` / `react-dom` 走运行时模块表（平台种子），在 esbuild 里标为 external。
+
+## 结构
+
+```
+src/index.js            宿主半边（空 —— 这是一个纯浏览器插件）
+client/src/index.tsx    浏览器半边：注册 shell.overlay 槽位、轮询读数
+client/src/panel.tsx   浮动面板：鲸鱼娘按钮 + 悬停卡片 + 拖拽定位
+client/src/whale.tsx   鲸鱼娘 SVG（手绘，无外部资源）
+client/src/data.ts     两个数据面的读取与聚合
+client/src/styles.ts   样式（只用 shell 的 --dsw-alias-* 主题变量）
+scripts/build-client.mjs  esbuild 打包 + ModuleLoader 信封
+```
+
+## 交互细节
+
+- **拖动**：按住鲸鱼娘拖到任意位置，松手即固定；位置存 `localStorage`，刷新后还在。
+  位置会被夹在视口内，换了屏幕尺寸也不会把鲸鱼弄丢。
+- **换角**：卡片右上角的 `⇄` 按钮把面板吸到下一个角落（键盘与触屏用户用这个）。
+- **悬停**：移上去 220ms 后展开，离开 260ms 后收起（避免路过时闪一下）。
+  键盘 `Tab` 聚焦鲸鱼娘也会展开，`Esc` 收起。
+- **点击**：点一下切换开合（触屏与不方便悬停的场景）。
+- **刷新**：卡片右上角的 `⟳` 立刻重读一次；平时每 90 秒自动读一次，页面切回前台时也会读。
+
+## 已知限制
+
+- 余额是**逐账号顺序**向上游查的（Channel Pack 的既有约定，避免并发触发风控），
+  所以 13 家厂商的首次读数可能要几秒；卡片会先把已知的数据显示出来。
+- `WorkBuddy 国际版` 没有余额接口（上游不提供），面板如实写「无余额接口」，
+  不会显示成 0——0 的语义是「已用光」，混淆会误导。
+- 某些厂商（如 LobsterAI）查不到余额时显示「读取失败」并把原因放在行首的
+  `title` 里，同样不显示成 0。
+
+## Model Experience
+
+无。面板是浏览器侧 UI，不注册任何面向模型的内容。
+
+#### KV Cache 影响
+
+无。这个插件不进入模型上下文，不改变任何 prompt、工具 schema 或请求体。
+
+## 许可
+
+MIT

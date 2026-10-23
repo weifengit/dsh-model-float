@@ -1,0 +1,44 @@
+{
+  "name": "dsh-model-float",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Model Float — 在 DSH 主界面挂一只可拖动的鲸鱼娘浮动面板，悬停即见白嫖模型各厂商的接入状态、剩余积分与余额。Model Float: a draggable whale-girl floating panel in the DSH web shell that shows, on hover, which free-model vendors are connected, how much credit each still has, and which are unavailable.",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "our-free-model",
+    "floating-panel",
+    "quota"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-renderer"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2"
+  }
+}
