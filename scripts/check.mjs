@@ -126,8 +126,14 @@ console.log('model hiding')
   check('reads the switch state from the Host', data.includes('readSwitch'))
   check('writes the switch state to the Host', data.includes('writeSwitch'))
 
+  const entrySource = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
   const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
   check('the panel offers the master switch', panel.includes('mf-switch'))
+  // A retired vendor answers every RPC with an error; listing it would hand
+  // the switch a target whose first read throws, which made the switch look
+  // unresponsive. Vendors the pack does not report are dropped instead.
+  check('vendors the pack no longer serves are dropped', data.includes('if (entry === undefined) return null'))
+  check('the switch isolates per-vendor failures', entrySource.includes('failures.push'))
   // The list is filtered by the switch's *record* (the vendors it hid), not
   // by a fresh verdict: a hidden vendor reads as "closed", so a fresh verdict
   // would call it usable and put it back.

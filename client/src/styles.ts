@@ -15,7 +15,12 @@
 
 /** The panel's stylesheet, injected once per plugin lifetime. */
 export const CSS = `
+/*
+ * DeepSeek's own brand blue, taken from the official site's stylesheet
+ * (the --ds-color-brand token, #4d6bfe).
+ */
 .mf-root {
+  --mf-brand-blue: #4d6bfe;
   position: fixed;
   z-index: 30;
   pointer-events: none;
@@ -335,8 +340,19 @@ export const CSS = `
   overflow: visible;
   /* The mark is wider than it is tall; centre it in the square button. */
   margin: 0 auto;
-  color: var(--dsw-alias-brand-text, #4d6bfe);
+  /*
+   * At rest the whale wears the shell's neutral ink, the way the sidebar's
+   * brand mark does. When the card opens it takes DeepSeek's own brand blue
+   * (the --ds-color-brand token on deepseek.com), so the float visibly
+   * "wakes up" into its official colours the moment it is showing what it
+   * knows.
+   */
+  color: var(--dsw-alias-label-primary, #f9fafb);
+  transition: color 220ms ease;
   animation: mf-swim 3.8s ease-in-out infinite;
+}
+.mf-card-shell.is-open .mf-whale {
+  color: var(--mf-brand-blue, #4d6bfe);
 }
 
 @keyframes mf-swim {

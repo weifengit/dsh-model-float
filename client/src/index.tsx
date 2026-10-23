@@ -207,13 +207,26 @@ export function apply(ctx: Record<string, any>): void {
           const current = snapshotRef.current
           const unusable = current === null ? [] : current.vendors.filter(isUnusable)
           const hidden: Record<string, string[]> = {}
+          // One vendor's failure must not abort the sweep. A pack that retired
+          // a vendor answers its reads with an error, and letting that
+          // propagate would leave the switch looking unresponsive: every click
+          // would die on the same vendor before hiding anything.
+          const failures: string[] = []
           for (const row of unusable) {
-            const models = await readVendorModels(row.vendor.id)
-            const visible = models.filter(model => !model.disabled && !model.dead).map(model => model.id)
-            if (visible.length === 0) continue
-            const result = await setVendorModelsDisabled(row.vendor.id, visible, true)
-            if (result.error !== '') throw new Error(`${row.vendor.name}: ${result.error}`)
-            hidden[row.vendor.id] = visible
+            try {
+              const models = await readVendorModels(row.vendor.id)
+              const visible = models.filter(model => !model.disabled && !model.dead).map(model => model.id)
+              if (visible.length === 0) continue
+              const result = await setVendorModelsDisabled(row.vendor.id, visible, true)
+              if (result.error !== '') { failures.push(`${row.vendor.name}：${result.error}`); continue }
+              hidden[row.vendor.id] = visible
+            } catch (error) {
+              failures.push(`${row.vendor.name}：${error instanceof Error ? error.message : String(error)}`)
+            }
+          }
+          if (failures.length > 0 && Object.keys(hidden).length === 0) {
+            // Nothing was hidden at all — that is a real failure worth showing.
+            throw new Error(failures.join('；'))
           }
           await writeSwitch({ enabled: true, hidden })
           // The switch's own state is what the panel shows; the write is the
@@ -222,13 +235,22 @@ export function apply(ctx: Record<string, any>): void {
           hiddenVendorsRef.current = Object.keys(hidden)
           setHiddenVendors(hiddenVendorsRef.current)
         } else {
-          // Restore exactly what the switch hid.
+          // Restore exactly what the switch hid. A provider that has since
+          // been retired cannot be restored, and must not block the rest: its
+          // entries are dropped from the record instead of retried forever.
           const state = await readSwitch()
+          const remaining: Record<string, string[]> = {}
           for (const [provider, ids] of Object.entries(state.hidden)) {
             const result = await setVendorModelsDisabled(provider, ids, false)
-            if (result.error !== '') throw new Error(`${provider}: ${result.error}`)
+            if (result.error === '') continue
+            // A retired provider can never be restored; keeping its ids in the
+            // record would make every later toggle retry a call that cannot
+            // succeed, so the record forgets it. Any other failure is kept, and
+            // the next toggle-off retries it.
+            const retired = /retired|已移除|不支持此渠道/i.test(result.error)
+            if (!retired) remaining[provider] = [...ids]
           }
-          await writeSwitch({ enabled: false, hidden: {} })
+          await writeSwitch({ enabled: false, hidden: remaining })
           setSwitchOn(false)
           hiddenVendorsRef.current = []
           setHiddenVendors([])

@@ -414,7 +414,7 @@ async function readVendors(
   // Balances are read per vendor: the pack has no "all vendors" balance
   // endpoint, and a vendor with no accounts answers with an empty list rather
   // than an error — so a vendor that is simply not logged in costs nothing.
-  const rows = await Promise.all(VENDORS.map(async vendor => {
+  const rows = await Promise.all(VENDORS.map(async (vendor): Promise<VendorRow | null> => {
     const entry = statuses[vendor.id]
     const base: VendorRow = {
       vendor,
@@ -431,13 +431,18 @@ async function readVendors(
       at: Date.now(),
     }
 
-    if (entry === undefined) {
-      return {
-        ...base,
-        state: 'unknown' as const,
-        error: statusError === '' ? 'vendor status unavailable' : statusError,
-      }
-    }
+    // The pack did not report this vendor at all. That covers two cases, and
+    // both mean the same thing to the panel: it does not serve this vendor.
+    //
+    //  - the vendor was *retired* by a plugin upgrade (WorkBuddy's channels
+    //    are gone in 2.5.8 and answer `provider-retired` on every call);
+    //  - this build of the pack never knew the vendor.
+    //
+    // Either way there is nothing to show and nothing to hide, so the row is
+    // dropped rather than listed as "unknown" — a retired vendor that stayed
+    // in the list would be offered to the switch, whose first read of it
+    // throws and takes the whole switch down with it.
+    if (entry === undefined) return null
     // A vendor whose every model is hidden is reported as `closed` by the pack —
     // but that verdict is the *blacklist* talking, not the vendor's health. The
     // master switch knows which vendors it hid, so the honest label is "hidden",
@@ -499,7 +504,7 @@ async function readVendors(
     }
   }))
 
-  return rows
+  return rows.filter((row): row is VendorRow => row !== null)
 }
 
 /**
