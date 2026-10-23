@@ -21,6 +21,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { WhaleMark } from './whale.tsx'
+import { isUnusable } from './data.ts'
 import type { FloatSnapshot, VendorRow, ModelRow } from './data.ts'
 
 /** Where the float can be snapped to. */
@@ -111,6 +112,8 @@ export interface PanelProps {
   readonly error: string
   /** Ask the host for a fresh reading. */
   readonly refresh: () => void
+  /** Hide (or restore) one vendor's models in the model picker. */
+  readonly setHidden: (provider: string, hidden: boolean) => Promise<void>
   /** The translator, already bound to this plugin's namespace. */
   readonly t: (key: string, vars?: Record<string, string | number>) => string
 }
@@ -121,11 +124,17 @@ export interface PanelProps {
  * @param props - see {@link PanelProps}.
  */
 export function ModelFloatPanel(props: PanelProps): React.ReactElement {
-  const { snapshot, loading, error, refresh, t } = props
+  const { snapshot, loading, error, refresh, setHidden, t } = props
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
   const [placement, setPlacement] = useState<Placement>(() => readPlacement(window.innerWidth, window.innerHeight))
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  /** Which vendor's hide/restore is in flight, and what it is doing. */
+  const [pending, setPending] = useState<{ provider: string, hidden: boolean } | null>(null)
+  /** The error of the last hide/restore, shown on the row that failed. */
+  const [actionError, setActionError] = useState<{ provider: string, error: string } | null>(null)
+  /** Whether the "hide all unusable" sweep is running. */
+  const [bulkPending, setBulkPending] = useState(false)
   const dragRef = useRef<{
     pointerId: number
     moved: boolean
@@ -255,12 +264,48 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
       return next
     })
   }, [viewport.width, viewport.height])
+  // ── hide / restore a vendor's models ──────────────────────────────────────
+  // reads on every listing — so the change lands in the composer without a
+  // reload (the pack broadcasts `llm/adapters-updated` after the write).
+  const onSetHidden = useCallback(async (provider: string, hidden: boolean) => {
+    setPending({ provider, hidden })
+    setActionError(null)
+    try {
+      await setHidden(provider, hidden)
+      refresh()
+    } catch (error) {
+      setActionError({ provider, error: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setPending(null)
+    }
+  }, [setHidden, refresh])
 
   const lane = snapshot?.lane
   const vendors = snapshot?.vendors ?? []
   const usable = vendors.filter(row => row.state === 'on').length
   const withCredit = vendors.filter(row => row.balance !== null && row.balance > 0).length
+  // How many models are still cluttering the picker across every vendor.
+  const visibleModels = vendors.reduce((sum, row) => sum + row.visibleModelCount, 0)
+  // The vendors whose models are in the picker but cannot answer a turn.
+  const unusable = vendors.filter(isUnusable)
+  const unusableModels = unusable.reduce((sum, row) => sum + row.visibleModelCount, 0)
 
+  // Hide every unusable vendor's models in one go.
+  const onHideUnusable = useCallback(async () => {
+    if (unusable.length === 0) return
+    setBulkPending(true)
+    setActionError(null)
+    try {
+      for (const row of unusable) {
+        await setHidden(row.vendor.id, true)
+      }
+      refresh()
+    } catch (error) {
+      setActionError({ provider: '', error: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setBulkPending(false)
+    }
+  }, [unusable, setHidden, refresh])
   // The card opens *beside* the whale: on whichever side has room, and upward
   // from a whale in the lower half so it never runs off the top of the screen.
   const cardSide = placement.x > viewport.width / 2 ? 'left' : 'right'
@@ -299,8 +344,24 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
                     total: lane.total,
                   })}
               </span>
+              {visibleModels > 0 ? (
+                <span className="mf-card-sub">
+                  {t('card.pickerModels', { count: visibleModels })}
+                </span>
+              ) : null}
             </div>
             <div className="mf-card-actions">
+              {unusable.length > 0 ? (
+                <button
+                  type="button"
+                  className="mf-sweep-btn"
+                  disabled={bulkPending}
+                  onClick={() => { void onHideUnusable() }}
+                  title={t('vendor.hideUnusable', { count: unusableModels })}
+                >
+                  {bulkPending ? '…' : t('vendor.hideUnusableShort')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="mf-icon-btn"
@@ -329,7 +390,14 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
 
           <div className="mf-vendor-list">
             {vendors.map(row => (
-              <VendorRowView key={row.vendor.id} row={row} t={t} />
+              <VendorRowView
+                key={row.vendor.id}
+                row={row}
+                t={t}
+                pending={pending?.provider === row.vendor.id ? pending.hidden : null}
+                onSetHidden={onSetHidden}
+                error={actionError?.provider === row.vendor.id ? actionError.error : ''}
+              />
             ))}
           </div>
 
@@ -389,20 +457,59 @@ function nearestCorner(placement: Placement, viewportWidth: number, viewportHeig
 }
 
 /** One vendor row of the card. */
-function VendorRowView({ row, t }: { row: VendorRow, t: PanelProps['t'] }): React.ReactElement {
+function VendorRowView({
+  row,
+  t,
+  pending,
+  onSetHidden,
+  error,
+}: {
+  row: VendorRow
+  t: PanelProps['t']
+  /** The in-flight action for this row: true = hiding, false = restoring, null = idle. */
+  pending: boolean | null
+  onSetHidden: (provider: string, hidden: boolean) => Promise<void>
+  error: string
+}): React.ReactElement {
   const state = stateOf(row)
   const balanceText = balanceTextOf(row, t)
+  // A vendor whose models are all hidden is one the picker no longer lists.
+  // The button restores them; otherwise it hides them.
+  const allHidden = row.modelCount > 0 && row.visibleModelCount === 0
+  const hasModels = row.modelCount > 0
   return (
-    <div className={`mf-vendor is-${state}`} title={row.error === '' ? undefined : row.error}>
+    <div className={`mf-vendor is-${state} ${allHidden ? 'is-hidden-models' : ''}`} title={row.error === '' ? undefined : row.error}>
       <span className="mf-vendor-stripe" style={{ background: row.vendor.accent }} aria-hidden="true" />
       <div className="mf-vendor-main">
         <span className="mf-vendor-name">{row.vendor.name}</span>
-        <span className="mf-vendor-org">{row.vendor.org}</span>
+        <span className="mf-vendor-org">
+          {row.vendor.org}
+          {hasModels ? (
+            <span className="mf-vendor-models">
+              {allHidden
+                ? t('vendor.modelsHidden', { count: row.modelCount })
+                : t('vendor.modelsVisible', { visible: row.visibleModelCount, total: row.modelCount })}
+            </span>
+          ) : null}
+        </span>
+        {error !== '' ? <span className="mf-vendor-error">{error}</span> : null}
       </div>
       <div className="mf-vendor-meta">
         <span className={`mf-vendor-state is-${state}`}>{stateLabel(state, t)}</span>
         <span className="mf-vendor-balance">{balanceText}</span>
       </div>
+      {hasModels ? (
+        <button
+          type="button"
+          className={`mf-hide-btn ${allHidden ? 'is-restore' : ''}`}
+          disabled={pending !== null}
+          onClick={() => { void onSetHidden(row.vendor.id, !allHidden) }}
+          title={allHidden ? t('vendor.restoreModels') : t('vendor.hideModels')}
+          aria-label={allHidden ? t('vendor.restoreModels') : t('vendor.hideModels')}
+        >
+          {pending === null ? (allHidden ? '↩' : '✕') : '…'}
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -428,10 +535,11 @@ function ModelList({ models, t }: { models: readonly ModelRow[], t: PanelProps['
 }
 
 /** The states a vendor row can be in, collapsed from {@link VendorRow}. */
-type RowState = 'on' | 'idle' | 'closed' | 'unknown' | 'empty' | 'error'
+type RowState = 'on' | 'idle' | 'closed' | 'hidden' | 'unknown' | 'empty' | 'error'
 
 /** Collapse a vendor row into the state the UI shows. */
 function stateOf(row: VendorRow): RowState {
+  if (row.state === 'hidden') return 'hidden'
   if (row.state === 'closed') return 'closed'
   if (row.state === 'on' && row.balance !== null && row.balance <= 0) return 'empty'
   if (row.state === 'on') return 'on'
@@ -446,6 +554,7 @@ function stateLabel(state: RowState, t: PanelProps['t']): string {
     case 'on': return t('vendor.on')
     case 'idle': return t('vendor.idle')
     case 'closed': return t('vendor.closed')
+    case 'hidden': return t('vendor.hidden')
     case 'empty': return t('vendor.empty')
     case 'error': return t('vendor.error')
     default: return t('vendor.unknown')

@@ -1,7 +1,7 @@
 /**
  * Model Float — data layer.
  *
- * Two independent readings, joined here into one vendor table:
+ * Three readings, joined into one vendor table:
  *
  * 1. **the free lane roster** — `GET /api/our-free-model/summary`, the JSON API
  *    the Our Free Model plugin already serves. It answers "which models exist
@@ -10,16 +10,21 @@
  *    list the 设置 → Our Free Model → 白嫖模型接入 page renders; the float is a
  *    glanceable version of it.
  *
- * 2. **per-vendor credit** — the Channel Pack RPC `credits.balances` (or the
- *    cached `usage.badge` reading of it), reached over the shell's own
- *    `/api/channel-pack` endpoint. It answers "how much credit does this
- *    vendor's account still have?", per vendor, in the vendor's own unit
- *    (积分 / credits / USD / tokens).
+ * 2. **per-vendor credit** — the Channel Pack RPC `credits.balances`, reached
+ *    over the shell's own `/api/channel-pack` endpoint. It answers "how much
+ *    credit does this vendor's account still have?", per vendor, in the
+ *    vendor's own unit (积分 / credits / USD / tokens).
  *
- * The two readings are joined by *vendor*, not by model: a vendor can expose
- * many models, and a model can be reachable through several vendors. The
- * vendor axis is the one the user actually asks about ("厂商哪些接入了，哪些
- * 还有额度，哪些不可用").
+ * 3. **the per-vendor model blacklist** — the Channel Pack RPC
+ *    `model.list` plus `model.setDisabledMany`. It answers "which of this
+ *    vendor's models are currently hidden from the model picker?", and it is
+ *    also the *write* path: hiding a vendor's models here removes them from the
+ *    chat composer's model picker, which is the whole point of the float.
+ *
+ * The readings are joined by *vendor*, not by model: a vendor can expose many
+ * models, and a model can be reachable through several vendors. The vendor
+ * axis is the one the user actually asks about ("厂商哪些接入了，哪些还有额度，
+ * 哪些不可用").
  *
  * @module client/src/data.ts
  */
@@ -78,6 +83,8 @@ export type VendorState =
   | 'idle'
   /** The vendor is live and serving models. */
   | 'on'
+  /** This panel hid the vendor's models; they are not in the picker. */
+  | 'hidden'
   /** The reading failed; the reason is carried alongside. */
   | 'unknown'
 
@@ -85,10 +92,12 @@ export type VendorState =
 export interface VendorRow {
   readonly vendor: Vendor
   readonly state: VendorState
-  /** How many models this vendor currently offers. */
+  /** How many models this vendor currently offers (including hidden ones). */
   readonly modelCount: number
-  /** How many of those models are blacklisted. */
+  /** How many of those models are hidden from the model picker. */
   readonly disabledCount: number
+  /** How many of this vendor's models are currently visible in the picker. */
+  readonly visibleModelCount: number
   /** How many accounts this vendor has, and how many are enabled. */
   readonly accountCount: number
   readonly enabledAccountCount: number
@@ -142,6 +151,44 @@ export interface ModelRow {
   readonly availability: string
   readonly detail: string
   readonly route: string
+}
+
+/** One model of a vendor, as the Channel Pack reports it. */
+export interface VendorModel {
+  readonly id: string
+  readonly name: string
+  /** Whether the model is currently hidden from the model picker. */
+  readonly disabled: boolean
+  /** Whether the upstream dropped the model (it is hidden either way). */
+  readonly dead: boolean
+}
+
+/** The result of one hide/restore operation. */
+export interface HideResult {
+  /** How many models the operation actually changed. */
+  readonly changed: number
+  /** The error, when the operation failed. */
+  readonly error: string
+}
+
+/**
+ * Is this vendor's model set worth hiding right now?
+ *
+ * "Unusable" means the models are in the picker but cannot answer a turn:
+ *
+ * - the vendor is not connected at all (switched off, not signed in, or no
+ *   account) — its models are listed but every call would fail;
+ * - the vendor is connected but its credit is spent (balance ≤ 0).
+ *
+ * A vendor whose balance could not be *read* is NOT unusable — that is an
+ * unknown, and hiding on an unknown would take away models that work. The user
+ * can still hide such a vendor by hand.
+ */
+export function isUnusable(row: VendorRow): boolean {
+  if (row.visibleModelCount === 0) return false
+  if (row.state === 'closed' || row.state === 'idle' || row.state === 'unknown') return true
+  if (row.balance === null) return false
+  return row.balance <= 0
 }
 
 /** Everything the float's panel renders. */
@@ -361,6 +408,7 @@ async function readVendors(signal?: AbortSignal): Promise<VendorRow[]> {
       state: 'unknown',
       modelCount: Number(entry?.models?.total ?? 0),
       disabledCount: Number(entry?.models?.disabled ?? 0),
+      visibleModelCount: Math.max(0, Number(entry?.models?.total ?? 0) - Number(entry?.models?.disabled ?? 0)),
       accountCount: Number(entry?.accounts?.total ?? 0),
       enabledAccountCount: Number(entry?.accounts?.enabled ?? 0),
       balance: null,
@@ -377,7 +425,16 @@ async function readVendors(signal?: AbortSignal): Promise<VendorRow[]> {
         error: statusError === '' ? 'vendor status unavailable' : statusError,
       }
     }
-    if (entry.closed === true) return { ...base, state: 'closed' as const }
+    // A vendor whose every model is hidden is reported as `closed` by the pack —
+    // but that verdict is the *blacklist* talking, not the vendor's health. When
+    // this panel is the one that hid them, the honest label is "hidden", not
+    // "turned off": the vendor is still connected, its models are just not in the
+    // picker.
+    if (entry.closed === true) {
+      const hiddenByPanel = readPanelHidden(vendor.id)
+      const state: VendorState = hiddenByPanel.length > 0 ? 'hidden' : 'closed'
+      return { ...base, state }
+    }
 
     if (!vendor.balance) {
       const state: VendorState = base.enabledAccountCount > 0 ? 'on' : base.accountCount > 0 ? 'idle' : 'unknown'
@@ -431,6 +488,152 @@ async function readVendors(signal?: AbortSignal): Promise<VendorRow[]> {
   }))
 
   return rows
+}
+
+/**
+ * Read one vendor's model list, with each model's hidden flag.
+ *
+ * The Channel Pack's `model.list` is the same directory the model picker
+ * renders, including the models the user has hidden — so it is the only place
+ * that can answer "which models are hidden?".
+ */
+export async function readVendorModels(provider: string): Promise<VendorModel[]> {
+  const result = await callChannelPack<{ models?: Array<{ id?: string, name?: string, disabled?: boolean, dead?: boolean }> }>(
+    'model.list',
+    { provider },
+  )
+  if (!result.ok) throw new Error(result.error)
+  return (result.value.models ?? []).map(model => ({
+    id: String(model.id ?? ''),
+    name: String(model.name ?? model.id ?? ''),
+    disabled: model.disabled === true,
+    dead: model.dead === true,
+  }))
+}
+
+/**
+ * Hide (or restore) a set of one vendor's models.
+ *
+ * The write goes through `model.setDisabledMany` rather than a loop of
+ * `model.setDisabled`: the batch endpoint writes the document once and
+ * broadcasts the catalog change once, so a 500-model vendor does not
+ * produce 500 writes and 500 catalog refreshes.
+ *
+ * @param provider - the vendor id.
+ * @param modelIds - the exact model ids to change.
+ * @param disabled - true hides them, false restores them.
+ */
+export async function setVendorModelsDisabled(
+  provider: string,
+  modelIds: readonly string[],
+  disabled: boolean,
+): Promise<HideResult> {
+  const ids = [...new Set(modelIds.filter(id => id !== ''))]
+  if (ids.length === 0) return { changed: 0, error: '' }
+  try {
+    const result = await callChannelPack('model.setDisabledMany', {
+      provider,
+      modelIds: ids,
+      disabled,
+    })
+    if (!result.ok) return { changed: 0, error: result.error }
+    return { changed: ids.length, error: '' }
+  } catch (error) {
+    return { changed: 0, error: messageOf(error) }
+  }
+}
+
+/**
+ * Hide every model of a vendor that is currently visible.
+ *
+ * The models that are *already* hidden are left alone: restoring them later
+ * must not resurrect a model the user hid by hand in the settings page.
+ */
+export async function hideVendorModels(provider: string): Promise<HideResult> {
+  const models = await readVendorModels(provider)
+  const visible = models.filter(model => !model.disabled && !model.dead).map(model => model.id)
+  return setVendorModelsDisabled(provider, visible, true)
+}
+
+/**
+ * Restore every model of a vendor that this panel hid.
+ *
+ * ⚠️ The blacklist is shared with the settings page: the user may have hidden
+ * models by hand there, and a blanket "restore everything" would undo those too.
+ * So the panel keeps its own record of what *it* hid, and only ever restores
+ * that set. The record lives in `localStorage` — the blacklist itself lives on
+ * the host, and the panel's own actions are what this record tracks.
+ *
+ * ⚠️ The record can be missing — a fresh browser, a cleared site data, or a
+ * profile wiped between the hide and the restore. Then the panel cannot tell
+ * "the user hid this by hand" from "this panel hid it", and the honest answer is
+ * to restore *everything* that is hidden: the models were hidden by *some*
+ * action, and leaving them hidden forever is the worse failure. The user can
+ * always re-hide what they actually wanted hidden.
+ */
+export async function restoreVendorModels(provider: string): Promise<HideResult> {
+  const hidden = readPanelHidden(provider)
+  let targets: string[]
+  try {
+    const models = await readVendorModels(provider)
+    const disabledIds = models.filter(model => model.disabled).map(model => model.id)
+    if (hidden.length === 0) {
+      // No record: restore every hidden model of this vendor.
+      targets = disabledIds
+    } else {
+      // With a record: restore only the models the panel hid that are *still*
+      // hidden — a model the user re-opened by hand must not be touched.
+      const recorded = new Set(hidden)
+      targets = disabledIds.filter(id => recorded.has(id))
+    }
+  } catch (error) {
+    if (hidden.length === 0) return { changed: 0, error: messageOf(error) }
+    targets = hidden
+  }
+  if (targets.length === 0) {
+    writePanelHidden(provider, [])
+    return { changed: 0, error: '' }
+  }
+  const result = await setVendorModelsDisabled(provider, targets, false)
+  if (result.error === '') {
+    // Keep the ids that failed to open (a model that vanished from the catalog)
+    // out of the record, and drop the ones we just opened.
+    const opened = new Set(targets)
+    writePanelHidden(provider, hidden.filter(id => !opened.has(id)))
+  }
+  return result
+}
+/** The localStorage key prefix holding the models this panel hid. */
+const PANEL_HIDDEN_PREFIX = 'dsh-model-float:hidden:v1:'
+
+/** The models this panel hid from one vendor. */
+export function readPanelHidden(provider: string): string[] {
+  try {
+    const raw = window.localStorage.getItem(PANEL_HIDDEN_PREFIX + provider)
+    if (raw === null) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** Record (or clear) the models this panel hid from one vendor. */
+export function writePanelHidden(provider: string, modelIds: readonly string[]): void {
+  try {
+    if (modelIds.length === 0) {
+      window.localStorage.removeItem(PANEL_HIDDEN_PREFIX + provider)
+      return
+    }
+    window.localStorage.setItem(PANEL_HIDDEN_PREFIX + provider, JSON.stringify([...modelIds]))
+  } catch {
+    /* the record is a convenience; the blacklist itself is on the host */
+  }
+}
+
+/** Forget the models this panel hid from one vendor. */
+export function clearPanelHidden(provider: string): void {
+  writePanelHidden(provider, [])
 }
 
 /** Coerce a possibly-absent number into a number or null. */

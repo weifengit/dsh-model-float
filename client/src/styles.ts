@@ -103,6 +103,25 @@ export const CSS = `
   cursor: pointer;
   padding: 0;
 }
+/* The "clean up" sweep: one click hides every unusable vendor's models. */
+.mf-sweep-btn {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid var(--dsw-alias-border-l3, rgba(15, 23, 42, 0.14));
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #5b6472);
+  font-size: 11.5px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mf-sweep-btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(15, 23, 42, 0.06));
+  color: var(--dsw-alias-label-primary, #1f2430);
+}
+.mf-sweep-btn:disabled { opacity: 0.45; cursor: default; }
+
 .mf-icon-btn:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover, rgba(15, 23, 42, 0.06));
   color: var(--dsw-alias-label-primary, #1f2430);
@@ -134,7 +153,7 @@ export const CSS = `
 
 .mf-vendor {
   display: grid;
-  grid-template-columns: 3px 1fr auto;
+  grid-template-columns: 3px 1fr auto auto;
   align-items: center;
   gap: 9px;
   padding: 7px 6px;
@@ -151,6 +170,14 @@ export const CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.mf-vendor-models { color: var(--dsw-alias-label-tertiary, #8a93a2); }
+.mf-vendor-error {
+  font-size: 10px;
+  color: var(--dsw-alias-state-error-primary, #b42318);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .mf-vendor-org {
   font-size: 10.5px;
   color: var(--dsw-alias-label-tertiary, #8a93a2);
@@ -158,11 +185,37 @@ export const CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.mf-vendor-models { color: var(--dsw-alias-label-tertiary, #8a93a2); }
+.mf-vendor.is-hidden-models .mf-vendor-name { opacity: 0.6; }
+
+/* The hide/restore button: one click takes a vendor's models out of (or back
+   into) the chat composer's model picker. */
+.mf-hide-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #8a93a2);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mf-hide-btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(15, 23, 42, 0.06));
+  border-color: var(--dsw-alias-border-l3, rgba(15, 23, 42, 0.14));
+  color: var(--dsw-alias-label-primary, #1f2430);
+}
+.mf-hide-btn.is-restore { color: var(--dsw-alias-state-success-primary, #067647); }
+.mf-hide-btn:disabled { opacity: 0.45; cursor: default; }
 .mf-vendor-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
 .mf-vendor-state { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
 .mf-vendor-state.is-on { color: var(--dsw-alias-state-success-primary, #067647); background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #067647) 14%, transparent); }
 .mf-vendor-state.is-idle { color: var(--dsw-alias-state-warn-primary, #b54708); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary, #b54708) 14%, transparent); }
 .mf-vendor-state.is-closed { color: var(--dsw-alias-label-secondary, #667085); background: color-mix(in srgb, var(--dsw-alias-label-secondary, #667085) 16%, transparent); }
+.mf-vendor-state.is-hidden { color: var(--dsw-alias-label-secondary, #667085); background: color-mix(in srgb, var(--dsw-alias-label-secondary, #667085) 16%, transparent); }
 .mf-vendor-state.is-empty { color: var(--dsw-alias-state-error-primary, #b42318); background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #b42318) 12%, transparent); }
 .mf-vendor-state.is-error { color: var(--dsw-alias-state-error-primary, #b42318); background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #b42318) 12%, transparent); }
 .mf-vendor-state.is-unknown { color: var(--dsw-alias-label-secondary, #667085); background: color-mix(in srgb, var(--dsw-alias-label-secondary, #667085) 14%, transparent); }

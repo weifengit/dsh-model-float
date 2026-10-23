@@ -101,6 +101,22 @@ console.log('host half')
   }
 }
 
+console.log('model hiding')
+{
+  const data = readFileSync(join(root, 'client', 'src', 'data.ts'), 'utf8')
+  check('reads the per-vendor model list', data.includes("'model.list'"))
+  check('writes through the batch endpoint', data.includes("'model.setDisabledMany'"))
+  // A loop of single-model writes would be N document writes and N catalog
+  // broadcasts — the batch endpoint is the only sane path for a 500-model vendor.
+  check('does not loop single-model writes', !data.includes("'model.setDisabled'"))
+  check('records what the panel hid', data.includes('PANEL_HIDDEN_PREFIX'))
+  check('restores everything when the record is gone', data.includes('hidden.length === 0'))
+
+  const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
+  check('the panel offers a per-vendor hide control', panel.includes('mf-hide-btn'))
+  check('the panel offers the bulk sweep', panel.includes('mf-sweep-btn'))
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`)
   process.exit(1)
