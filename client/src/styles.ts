@@ -30,11 +30,11 @@ export const CSS = `
   color: var(--dsw-alias-label-primary, #1f2430);
 }
 .mf-card-shell {
-  /* The box IS the mark: 56 × 41 (the mark's own 23.16 : 17.04), so a
-     placement is the whale's own position with no dead padding around it. */
+  /* The seat is 54 × 54 — the same square the reference music ball uses — so
+     the float is the same size and drags with the same hitbox. */
   position: relative;
-  width: 56px;
-  height: 41px;
+  width: 54px;
+  height: 54px;
   pointer-events: none;
 }
 
@@ -318,14 +318,20 @@ export const CSS = `
 .mf-whale-btn {
   pointer-events: auto;
   position: relative;
-  width: 56px;
-  height: 41px;
+  width: 54px;
+  height: 54px;
   padding: 0;
   border: none;
+  border-radius: 50%;
   background: transparent;
   cursor: grab;
   touch-action: none;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.42));
+  /* Centre the wide mark in the square seat, the way the reference ball
+     centres its icon. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.42));
   transition: transform 160ms ease;
 }
 .mf-whale-btn:active { cursor: grabbing; transform: scale(0.96); }
@@ -339,9 +345,10 @@ export const CSS = `
 .mf-whale {
   display: block;
   overflow: visible;
-  /* The box already carries the mark's aspect; the svg fills it exactly. */
-  width: 100%;
-  height: 100%;
+  /* The mark spans the seat's full width; its own height follows the viewBox
+     aspect, and the flex seat centres it vertically. */
+  width: 54px;
+  height: auto;
   /*
    * At rest the whale wears the shell's neutral ink, the way the sidebar's
    * brand mark does. When the card opens it takes DeepSeek's own brand blue
@@ -361,24 +368,4 @@ export const CSS = `
   0%, 100% { transform: translateY(0) rotate(-1.5deg); }
   50% { transform: translateY(-4px) rotate(1.5deg); }
 }
-
-.mf-whale-badge {
-  position: absolute;
-  /* Kept inside the box by a hair: the whale can sit flush against an edge,
-     so a badge hanging further out would be clipped by the viewport. */
-  top: -1px;
-  right: -1px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--dsw-alias-state-success-primary, #067647);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-.mf-card-shell.is-open .mf-whale-badge { background: var(--dsw-alias-brand-text, #2f6feb); }
 `

@@ -40,30 +40,30 @@ export const PLACEMENT_KEY = 'dsh-model-float:placement:v1'
 
 /**
  * The mark's native aspect, from its own viewBox (23.16 : 17.04).
- *
- * The button is sized to this ratio rather than to a square: a square button
- * around a wide mark leaves vertical dead space, and that dead space is what
- * made the whale look like it floated further from the edge than it really
- * did. The box *is* the mark, so a placement is the mark's own position.
  */
 export const WHALE_ASPECT = 17.04 / 23.16
 
 /**
- * The whale button's width in px — the size a placement is measured against.
+ * The float's edge in px — the same 54 px as the reference music ball.
+ *
+ * A square seat, with the wide mark filling it horizontally and centred
+ * vertically. Matching the reference's seat (rather than the mark's own
+ * aspect) keeps the float the same visual size as the ball next to it and
+ * keeps a stable drag hitbox whatever the artwork's shape.
  */
-export const WHALE_WIDTH = 56
-
-/** The whale button's height in px, derived from the mark's own aspect. */
-export const WHALE_HEIGHT = Math.round(WHALE_WIDTH * WHALE_ASPECT)
+export const WHALE_SIZE = 54
 
 /**
- * The gap kept between the whale and the viewport edge, in px.
- *
- * Zero: the whale may sit flush against any edge, or tucked into a corner.
- * It is still clamped to the viewport, so it can never be dragged fully out of
- * reach — but there is no reserved margin around it.
+ * The mark's rendered width in px — the seat's full width, so the whale itself
+ * is the same 54 px across as the reference ball.
  */
-export const EDGE_GAP = 0
+export const WHALE_WIDTH = WHALE_SIZE
+
+/** The gap kept between the float and the viewport edge, in px. */
+export const EDGE_GAP = 8
+
+/** The margin the float starts with, inside the viewport corner. */
+export const HOME_MARGIN = 22
 
 /** The polling interval for the readings, in ms. */
 export const POLL_MS = 90_000
@@ -73,8 +73,8 @@ export const POLL_MS = 90_000
  * edge, and never beyond the viewport's far side.
  */
 export function clampPlacement(placement: Placement, viewportWidth: number, viewportHeight: number): Placement {
-  const maxX = Math.max(EDGE_GAP, viewportWidth - WHALE_WIDTH - EDGE_GAP)
-  const maxY = Math.max(EDGE_GAP, viewportHeight - WHALE_HEIGHT - EDGE_GAP)
+  const maxX = Math.max(EDGE_GAP, viewportWidth - WHALE_SIZE - EDGE_GAP)
+  const maxY = Math.max(EDGE_GAP, viewportHeight - WHALE_SIZE - EDGE_GAP)
   return {
     x: Math.min(maxX, Math.max(EDGE_GAP, placement.x)),
     y: Math.min(maxY, Math.max(EDGE_GAP, placement.y)),
@@ -83,17 +83,16 @@ export function clampPlacement(placement: Placement, viewportWidth: number, view
 
 /** The position of one corner of the viewport. */
 export function cornerPlacement(corner: Corner, viewportWidth: number, viewportHeight: number): Placement {
-  const right = viewportWidth - WHALE_WIDTH - EDGE_GAP
-  const bottom = viewportHeight - WHALE_HEIGHT - EDGE_GAP
-  // The default home keeps a small breathing margin — flush against the edge
-  // is reachable by dragging, but a first-run whale jammed into the corner
-  // reads as a rendering bug.
-  const home = 12
+  // The reference ball's own first-run position: 22 px in from the corner,
+  // measured to the seat's edge (not to the 8 px clamp margin).
+  const home = HOME_MARGIN
+  const right = viewportWidth - WHALE_SIZE - home
+  const bottom = viewportHeight - WHALE_SIZE - home
   switch (corner) {
-    case 'bottom-left': return { x: home, y: bottom - home }
-    case 'top-right': return { x: right - home, y: home }
+    case 'bottom-left': return { x: home, y: bottom }
+    case 'top-right': return { x: right, y: home }
     case 'top-left': return { x: home, y: home }
-    default: return { x: right - home, y: bottom - home }
+    default: return { x: right, y: bottom }
   }
 }
 
@@ -457,9 +456,6 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
           title={t('float.label')}
         >
           <WhaleMark size={WHALE_WIDTH} />
-          <span className="mf-whale-badge" aria-hidden="true">
-            {usable > 0 ? usable : '—'}
-          </span>
         </button>
       </div>
     </div>

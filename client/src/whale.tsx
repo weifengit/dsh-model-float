@@ -8,7 +8,7 @@
  *
  * The path is inlined (no asset fetch, no build step) and coloured with
  * `currentColor`, so it follows the shell's theme. It animates in CSS — the
- * whale bobs, and the badge counts the usable vendors.
+ * whale sways — and it is the whole float: no badge, no chrome.
  *
  * The mark is purely decorative: the float's accessible name comes from the
  * button that wraps it, so the SVG itself is `aria-hidden`.

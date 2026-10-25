@@ -25,46 +25,47 @@ console.log('placement')
 {
   // 直接复用源码里的纯函数：把 panel.tsx 的导出抠出来跑不现实（它是 TSX），
   // 这里复制同一套规则做等价验证——两处规则必须一致，改一处就要改两处。
-  // Mirrors panel.tsx: the box is the mark's own 56 × 41, and no margin is
-  // reserved around it.
-  const WHALE_WIDTH = 56
-  const WHALE_HEIGHT = 41
-  const EDGE_GAP = 0
+  // Mirrors panel.tsx: a 54 × 54 seat with an 8 px edge margin — the same
+  // size and boundary control as the reference music ball.
+  const WHALE_SIZE = 54
+  const EDGE_GAP = 8
   const clamp = (x, y, w, h) => ({
-    x: Math.min(Math.max(EDGE_GAP, w - WHALE_WIDTH - EDGE_GAP), Math.max(EDGE_GAP, x)),
-    y: Math.min(Math.max(EDGE_GAP, h - WHALE_HEIGHT - EDGE_GAP), Math.max(EDGE_GAP, y)),
+    x: Math.min(Math.max(EDGE_GAP, w - WHALE_SIZE - EDGE_GAP), Math.max(EDGE_GAP, x)),
+    y: Math.min(Math.max(EDGE_GAP, h - WHALE_SIZE - EDGE_GAP), Math.max(EDGE_GAP, y)),
   })
+  // The reference ball's first-run position: 22 px in from the corner,
+  // measured to the seat's edge (not to the 8 px clamp margin).
   const corner = (c, w, h) => {
-    const home = 12
-    const right = w - WHALE_WIDTH - EDGE_GAP
-    const bottom = h - WHALE_HEIGHT - EDGE_GAP
+    const home = 22
+    const right = w - WHALE_SIZE - home
+    const bottom = h - WHALE_SIZE - home
     switch (c) {
-      case 'bottom-left': return { x: home, y: bottom - home }
-      case 'top-right': return { x: right - home, y: home }
+      case 'bottom-left': return { x: home, y: bottom }
+      case 'top-right': return { x: right, y: home }
       case 'top-left': return { x: home, y: home }
-      default: return { x: right - home, y: bottom - home }
+      default: return { x: right, y: bottom }
     }
   }
 
   const c = clamp(-999, -999, 1440, 900)
-  check('clamps an off-screen position back to flush (0,0)', c.x === 0 && c.y === 0)
+  check('clamps an off-screen position back to the 8px margin', c.x === EDGE_GAP && c.y === EDGE_GAP)
   const far = clamp(99999, 99999, 1440, 900)
-  check('clamps a beyond-the-edge position back', far.x === 1440 - WHALE_WIDTH && far.y === 900 - WHALE_HEIGHT)
+  check('clamps a beyond-the-edge position back', far.x === 1440 - WHALE_SIZE - EDGE_GAP && far.y === 900 - WHALE_SIZE - EDGE_GAP)
   const keep = clamp(700, 400, 1440, 900)
   check('keeps a position that is already inside', keep.x === 700 && keep.y === 400)
-  // 贴边是可达的 —— 这正是「真正悬浮在任意位置」的要求
-  const flush = clamp(1440 - WHALE_WIDTH, 900 - WHALE_HEIGHT, 1440, 900)
-  check('the whale can sit flush against the right/bottom edge',
-    flush.x + WHALE_WIDTH === 1440 && flush.y + WHALE_HEIGHT === 900)
+  // 贴到极限时，盒子与边界之间只剩 8px —— 与参考球一致
+  const edge = clamp(1440 - WHALE_SIZE, 900 - WHALE_SIZE, 1440, 900)
+  check('the float stops 8px from the right/bottom edge',
+    edge.x + WHALE_SIZE + EDGE_GAP === 1440 && edge.y + WHALE_SIZE + EDGE_GAP === 900)
 
   const br = corner('bottom-right', 1440, 900)
-  check('the default home tucks into the corner with a small margin', br.x === 1440 - WHALE_WIDTH - 12 && br.y === 900 - WHALE_HEIGHT - 12)
+  check('the default home matches the reference 22px', br.x === 1440 - WHALE_SIZE - 22 && br.y === 900 - WHALE_SIZE - 22)
   const tl = corner('top-left', 1440, 900)
-  check('the default top-left home keeps the same margin', tl.x === 12 && tl.y === 12)
+  check('the default top-left home keeps the same margin', tl.x === 22 && tl.y === 22)
 
   // 换屏之后：旧位置必须还在新视口里。
   const moved = clamp(99999, 99999, 800, 600)
-  check('a position from a wide screen survives a narrow one', moved.x <= 800 - WHALE_WIDTH && moved.y <= 600 - WHALE_HEIGHT)
+  check('a position from a wide screen survives a narrow one', moved.x + WHALE_SIZE + EDGE_GAP <= 800 && moved.y + WHALE_SIZE + EDGE_GAP <= 600)
 }
 
 console.log('geometry')
@@ -72,12 +73,11 @@ console.log('geometry')
   const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
   // The whale may sit flush against any edge. A reserved margin is exactly the
   // "it still floats a bit away from the border" the reference ball fixed.
-  check('no reserved edge gap', /export const EDGE_GAP = 0\b/.test(panel))
-  // The box carries the mark's own aspect, so the placement is the whale's
-  // own position — a square box around a wide mark leaves dead space that
-  // reads as a larger gap than there is.
-  check('the box follows the mark aspect', panel.includes('WHALE_ASPECT'))
-  check('the button is not square', /width: 56px[\s\S]{0,80}height: 41px/.test(readFileSync(join(root, 'client', 'src', 'styles.ts'), 'utf8')))
+  // Same size and boundary control as the reference music ball.
+  check('the seat is 54px like the reference ball', /export const WHALE_SIZE = 54\b/.test(panel))
+  check('the edge margin is 8px like the reference ball', /export const EDGE_GAP = 8\b/.test(panel))
+  check('the default home is 22px like the reference ball', /export const HOME_MARGIN = 22\b/.test(panel))
+  check('the css seat is 54 x 54', /width: 54px[\s\S]{0,80}height: 54px/.test(readFileSync(join(root, 'client', 'src', 'styles.ts'), 'utf8')))
   // A drag that moves on one axis only must still count as a drag.
   check('a one-axis drag is a drag', /Math\.abs\(dx\) > 3 \|\| Math\.abs\(dy\) > 3/.test(panel))
 }
