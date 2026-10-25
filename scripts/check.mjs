@@ -25,38 +25,61 @@ console.log('placement')
 {
   // 直接复用源码里的纯函数：把 panel.tsx 的导出抠出来跑不现实（它是 TSX），
   // 这里复制同一套规则做等价验证——两处规则必须一致，改一处就要改两处。
-  const WHALE_SIZE = 62
-  const EDGE_GAP = 24
+  // Mirrors panel.tsx: the box is the mark's own 56 × 41, and no margin is
+  // reserved around it.
+  const WHALE_WIDTH = 56
+  const WHALE_HEIGHT = 41
+  const EDGE_GAP = 0
   const clamp = (x, y, w, h) => ({
-    x: Math.min(Math.max(EDGE_GAP, w - WHALE_SIZE - EDGE_GAP), Math.max(EDGE_GAP, x)),
-    y: Math.min(Math.max(EDGE_GAP, h - WHALE_SIZE - EDGE_GAP), Math.max(EDGE_GAP, y)),
+    x: Math.min(Math.max(EDGE_GAP, w - WHALE_WIDTH - EDGE_GAP), Math.max(EDGE_GAP, x)),
+    y: Math.min(Math.max(EDGE_GAP, h - WHALE_HEIGHT - EDGE_GAP), Math.max(EDGE_GAP, y)),
   })
   const corner = (c, w, h) => {
-    const right = w - WHALE_SIZE - EDGE_GAP
-    const bottom = h - WHALE_SIZE - EDGE_GAP
+    const home = 12
+    const right = w - WHALE_WIDTH - EDGE_GAP
+    const bottom = h - WHALE_HEIGHT - EDGE_GAP
     switch (c) {
-      case 'bottom-left': return { x: EDGE_GAP, y: bottom }
-      case 'top-right': return { x: right, y: EDGE_GAP }
-      case 'top-left': return { x: EDGE_GAP, y: EDGE_GAP }
-      default: return { x: right, y: bottom }
+      case 'bottom-left': return { x: home, y: bottom - home }
+      case 'top-right': return { x: right - home, y: home }
+      case 'top-left': return { x: home, y: home }
+      default: return { x: right - home, y: bottom - home }
     }
   }
 
   const c = clamp(-999, -999, 1440, 900)
-  check('clamps an off-screen position back into the viewport', c.x === EDGE_GAP && c.y === EDGE_GAP)
+  check('clamps an off-screen position back to flush (0,0)', c.x === 0 && c.y === 0)
   const far = clamp(99999, 99999, 1440, 900)
-  check('clamps a beyond-the-edge position back', far.x === 1440 - WHALE_SIZE - EDGE_GAP && far.y === 900 - WHALE_SIZE - EDGE_GAP)
+  check('clamps a beyond-the-edge position back', far.x === 1440 - WHALE_WIDTH && far.y === 900 - WHALE_HEIGHT)
   const keep = clamp(700, 400, 1440, 900)
   check('keeps a position that is already inside', keep.x === 700 && keep.y === 400)
+  // 贴边是可达的 —— 这正是「真正悬浮在任意位置」的要求
+  const flush = clamp(1440 - WHALE_WIDTH, 900 - WHALE_HEIGHT, 1440, 900)
+  check('the whale can sit flush against the right/bottom edge',
+    flush.x + WHALE_WIDTH === 1440 && flush.y + WHALE_HEIGHT === 900)
 
   const br = corner('bottom-right', 1440, 900)
-  check('bottom-right corner sits above the edge gap', br.x === 1440 - WHALE_SIZE - EDGE_GAP && br.y === 900 - WHALE_SIZE - EDGE_GAP)
+  check('the default home tucks into the corner with a small margin', br.x === 1440 - WHALE_WIDTH - 12 && br.y === 900 - WHALE_HEIGHT - 12)
   const tl = corner('top-left', 1440, 900)
-  check('top-left corner sits inside the edge gap', tl.x === EDGE_GAP && tl.y === EDGE_GAP)
+  check('the default top-left home keeps the same margin', tl.x === 12 && tl.y === 12)
 
   // 换屏之后：旧位置必须还在新视口里。
-  const moved = clamp(br.x, br.y, 800, 600)
-  check('a position from a wide screen survives a narrow one', moved.x <= 800 - WHALE_SIZE && moved.y <= 600 - WHALE_SIZE)
+  const moved = clamp(99999, 99999, 800, 600)
+  check('a position from a wide screen survives a narrow one', moved.x <= 800 - WHALE_WIDTH && moved.y <= 600 - WHALE_HEIGHT)
+}
+
+console.log('geometry')
+{
+  const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
+  // The whale may sit flush against any edge. A reserved margin is exactly the
+  // "it still floats a bit away from the border" the reference ball fixed.
+  check('no reserved edge gap', /export const EDGE_GAP = 0\b/.test(panel))
+  // The box carries the mark's own aspect, so the placement is the whale's
+  // own position — a square box around a wide mark leaves dead space that
+  // reads as a larger gap than there is.
+  check('the box follows the mark aspect', panel.includes('WHALE_ASPECT'))
+  check('the button is not square', /width: 56px[\s\S]{0,80}height: 41px/.test(readFileSync(join(root, 'client', 'src', 'styles.ts'), 'utf8')))
+  // A drag that moves on one axis only must still count as a drag.
+  check('a one-axis drag is a drag', /Math\.abs\(dx\) > 3 \|\| Math\.abs\(dy\) > 3/.test(panel))
 }
 
 console.log('bundle shape')

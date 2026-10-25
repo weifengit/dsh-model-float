@@ -39,20 +39,31 @@ export interface Placement {
 export const PLACEMENT_KEY = 'dsh-model-float:placement:v1'
 
 /**
- * The whale button's edge in px — the size a placement is measured against.
+ * The mark's native aspect, from its own viewBox (23.16 : 17.04).
+ *
+ * The button is sized to this ratio rather than to a square: a square button
+ * around a wide mark leaves vertical dead space, and that dead space is what
+ * made the whale look like it floated further from the edge than it really
+ * did. The box *is* the mark, so a placement is the mark's own position.
  */
-export const WHALE_SIZE = 62
+export const WHALE_ASPECT = 17.04 / 23.16
 
 /**
- * The official mark's rendered width in px.
- *
- * The mark is 23.16:17.04 — wider than it is tall — so it is sized by width
- * and centred inside the square button.
+ * The whale button's width in px — the size a placement is measured against.
  */
-export const WHALE_WIDTH = 52
+export const WHALE_WIDTH = 56
 
-/** The gap kept between the whale and the viewport edge, in px. */
-export const EDGE_GAP = 24
+/** The whale button's height in px, derived from the mark's own aspect. */
+export const WHALE_HEIGHT = Math.round(WHALE_WIDTH * WHALE_ASPECT)
+
+/**
+ * The gap kept between the whale and the viewport edge, in px.
+ *
+ * Zero: the whale may sit flush against any edge, or tucked into a corner.
+ * It is still clamped to the viewport, so it can never be dragged fully out of
+ * reach — but there is no reserved margin around it.
+ */
+export const EDGE_GAP = 0
 
 /** The polling interval for the readings, in ms. */
 export const POLL_MS = 90_000
@@ -62,8 +73,8 @@ export const POLL_MS = 90_000
  * edge, and never beyond the viewport's far side.
  */
 export function clampPlacement(placement: Placement, viewportWidth: number, viewportHeight: number): Placement {
-  const maxX = Math.max(EDGE_GAP, viewportWidth - WHALE_SIZE - EDGE_GAP)
-  const maxY = Math.max(EDGE_GAP, viewportHeight - WHALE_SIZE - EDGE_GAP)
+  const maxX = Math.max(EDGE_GAP, viewportWidth - WHALE_WIDTH - EDGE_GAP)
+  const maxY = Math.max(EDGE_GAP, viewportHeight - WHALE_HEIGHT - EDGE_GAP)
   return {
     x: Math.min(maxX, Math.max(EDGE_GAP, placement.x)),
     y: Math.min(maxY, Math.max(EDGE_GAP, placement.y)),
@@ -72,13 +83,17 @@ export function clampPlacement(placement: Placement, viewportWidth: number, view
 
 /** The position of one corner of the viewport. */
 export function cornerPlacement(corner: Corner, viewportWidth: number, viewportHeight: number): Placement {
-  const right = viewportWidth - WHALE_SIZE - EDGE_GAP
-  const bottom = viewportHeight - WHALE_SIZE - EDGE_GAP
+  const right = viewportWidth - WHALE_WIDTH - EDGE_GAP
+  const bottom = viewportHeight - WHALE_HEIGHT - EDGE_GAP
+  // The default home keeps a small breathing margin — flush against the edge
+  // is reachable by dragging, but a first-run whale jammed into the corner
+  // reads as a rendering bug.
+  const home = 12
   switch (corner) {
-    case 'bottom-left': return { x: EDGE_GAP, y: bottom }
-    case 'top-right': return { x: right, y: EDGE_GAP }
-    case 'top-left': return { x: EDGE_GAP, y: EDGE_GAP }
-    default: return { x: right, y: bottom }
+    case 'bottom-left': return { x: home, y: bottom - home }
+    case 'top-right': return { x: right - home, y: home }
+    case 'top-left': return { x: home, y: home }
+    default: return { x: right - home, y: bottom - home }
   }
 }
 
@@ -150,8 +165,12 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
   const dragRef = useRef<{
     pointerId: number
     moved: boolean
-    offsetX: number
-    offsetY: number
+    /** Where the pointer went down, in viewport px. */
+    startX: number
+    startY: number
+    /** Where the float sat when the drag started, in viewport px. */
+    originX: number
+    originY: number
   } | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
 
@@ -187,8 +206,14 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
     dragRef.current = {
       pointerId: event.pointerId,
       moved: false,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
+      // Anchored to where the drag *started*, not to the live placement: the
+      // placement is React state and lags a frame behind the pointer, so
+      // deriving the offset from it makes a slow drag jitter and a one-axis
+      // drag look like it never started.
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: rect.left,
+      originY: rect.top,
     }
     // Capture the pointer so the drag survives the pointer leaving the whale.
     try {
@@ -201,16 +226,19 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current
     if (drag === null || drag.pointerId !== event.pointerId) return
-    const dx = event.clientX - drag.offsetX
-    const dy = event.clientY - drag.offsetY
-    if (!drag.moved && Math.abs(dx - placement.x) > 3 && Math.abs(dy - placement.y) > 3) drag.moved = true
+    const dx = event.clientX - drag.startX
+    const dy = event.clientY - drag.startY
+    // Either axis passing the threshold is a drag. Requiring both would make a
+    // purely horizontal or purely vertical drag read as a click — the whale
+    // could never be pushed straight into a side or the top/bottom edge.
+    if (!drag.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) drag.moved = true
     if (!drag.moved) return
-    setPlacement(current => clampPlacement(
-      { x: event.clientX - drag.offsetX, y: event.clientY - drag.offsetY },
+    setPlacement(clampPlacement(
+      { x: drag.originX + dx, y: drag.originY + dy },
       window.innerWidth,
       window.innerHeight,
     ))
-  }, [placement.x, placement.y])
+  }, [])
 
   const endDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current

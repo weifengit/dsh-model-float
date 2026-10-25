@@ -30,9 +30,11 @@ export const CSS = `
   color: var(--dsw-alias-label-primary, #1f2430);
 }
 .mf-card-shell {
+  /* The box IS the mark: 56 × 41 (the mark's own 23.16 : 17.04), so a
+     placement is the whale's own position with no dead padding around it. */
   position: relative;
-  width: 62px;
-  height: 62px;
+  width: 56px;
+  height: 41px;
   pointer-events: none;
 }
 
@@ -316,15 +318,14 @@ export const CSS = `
 .mf-whale-btn {
   pointer-events: auto;
   position: relative;
-  width: 62px;
-  height: 62px;
+  width: 56px;
+  height: 41px;
   padding: 0;
   border: none;
-  border-radius: 50%;
   background: transparent;
   cursor: grab;
   touch-action: none;
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.42));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.42));
   transition: transform 160ms ease;
 }
 .mf-whale-btn:active { cursor: grabbing; transform: scale(0.96); }
@@ -338,8 +339,9 @@ export const CSS = `
 .mf-whale {
   display: block;
   overflow: visible;
-  /* The mark is wider than it is tall; centre it in the square button. */
-  margin: 0 auto;
+  /* The box already carries the mark's aspect; the svg fills it exactly. */
+  width: 100%;
+  height: 100%;
   /*
    * At rest the whale wears the shell's neutral ink, the way the sidebar's
    * brand mark does. When the card opens it takes DeepSeek's own brand blue
@@ -362,8 +364,10 @@ export const CSS = `
 
 .mf-whale-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  /* Kept inside the box by a hair: the whale can sit flush against an edge,
+     so a badge hanging further out would be clipped by the viewport. */
+  top: -1px;
+  right: -1px;
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
