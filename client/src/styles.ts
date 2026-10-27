@@ -399,17 +399,18 @@ export const CSS = `
    between them still look like part of the ring. */
 .mf-ring-band {
   fill: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #2c2c2e) 82%, transparent);
-  stroke: color-mix(in srgb, var(--dsw-alias-border-l3, #ffffff26) 70%, transparent);
-  stroke-width: 1;
-  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.4));
+  /* No stroke: the band is a closed path, so stroking it would also draw its
+     two radial edges — the straight seam that appeared above the whale. */
+  stroke: none;
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.42));
 }
 
-.mf-ring-band-glow {
+/* The outline, as an open arc: an edge without the radial seams. */
+.mf-ring-rim {
   fill: none;
-  stroke: var(--mf-brand-blue, #4d6bfe);
-  stroke-width: 1.5;
-  opacity: 0;
-  transition: opacity 140ms ease;
+  stroke: color-mix(in srgb, var(--dsw-alias-border-l3, #ffffff26) 75%, transparent);
+  stroke-width: 1;
+  pointer-events: none;
 }
 
 .mf-ring-wedge-group { cursor: pointer; }
@@ -482,13 +483,14 @@ export const CSS = `
 
 .mf-lock-clock { text-align: center; }
 .mf-lock-time {
-  font-size: clamp(56px, 11vw, 132px);
-  font-weight: 200;
-  letter-spacing: -0.02em;
+  font-size: clamp(76px, 15vw, 176px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.45);
 }
-.mf-lock-date { margin-top: 10px; font-size: 15px; color: rgba(255, 255, 255, 0.66); }
+.mf-lock-date { margin-top: 14px; font-size: 17px; font-weight: 500; color: rgba(255, 255, 255, 0.72); }
 
 .mf-lock-weather { display: flex; align-items: center; gap: 12px; font-size: 16px; }
 .mf-lock-weather-icon { font-size: 30px; }

@@ -83,12 +83,12 @@ export function apply(ctx, _config = {}) {
       }
       if (method === 'GET' && route === '/metrics') {
         // One sample per poll: the rate is the delta between two polls.
-        return send(200, sampler.sample())
+        return send(200, await sampler.sample())
       }
       if (method === 'POST' && route === '/memory/release') {
         const result = requestGarbageCollection()
         // The reading is taken again so the page can show what changed.
-        return send(200, { ...result, memory: sampler.sample() })
+        return send(200, { ...result, memory: await sampler.sample() })
       }
       if (method === 'POST' && route === '/switch') {
         const body = await readJson(req)

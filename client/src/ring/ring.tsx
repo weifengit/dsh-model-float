@@ -18,7 +18,7 @@
  */
 
 import React, { useMemo, useRef, useState } from 'react'
-import { arcPath, layoutWedges, wedgeAt, wedgePath, INNER_RADIUS, OUTER_RADIUS } from './geometry.ts'
+import { arcPath, arcRimPath, layoutWedges, wedgeAt, wedgePath, OUTER_RADIUS } from './geometry.ts'
 import { RingIcon } from './icons.tsx'
 import type { Action } from '../features/registry.ts'
 
@@ -32,8 +32,6 @@ export interface RingProps {
   readonly horizontal: 'left' | 'right' | 'none'
   /** 'top' | 'bottom' | 'none' — which side of the screen the float is on. */
   readonly vertical: 'top' | 'bottom' | 'none'
-  /** The ring's offset from the whale's centre, in px. */
-  readonly offset: { x: number, y: number }
   /** The action the pointer is over, or undefined. */
   readonly hovered: string | undefined
   /** Report the action under the pointer. */
@@ -54,7 +52,7 @@ export interface RingProps {
  * @param props - see {@link RingProps}.
  */
 export function Ring(props: RingProps): React.ReactElement | null {
-  const { actions, open, horizontal, vertical, offset, hovered, onHover, onOpen, onClose, onRun, t } = props
+  const { actions, open, horizontal, vertical, hovered, onHover, onOpen, onClose, onRun, t } = props
   const svgRef = useRef<SVGSVGElement | null>(null)
 
   const wedges = useMemo(
@@ -80,13 +78,16 @@ export function Ring(props: RingProps): React.ReactElement | null {
   }
 
   const band = arcPath(horizontal, vertical)
+  // The band's own outline includes its two radial closing edges, and stroking
+  // those draws a seam straight out from the whale. The rim is an open arc, so
+  // the ring has an edge without one.
+  const rim = arcRimPath(horizontal, vertical)
   const size = (OUTER_RADIUS + 6) * 2
 
   return (
     <svg
       ref={svgRef}
       className="mf-ring"
-      style={{ marginLeft: offset.x, marginTop: offset.y }}
       width={size}
       height={size}
       viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`}
@@ -98,6 +99,7 @@ export function Ring(props: RingProps): React.ReactElement | null {
       {/* The band behind the wedges, so a gap between them still reads as
           part of the ring rather than as a hole. */}
       <path className="mf-ring-band" d={band} />
+      <path className="mf-ring-rim" d={rim} />
       {wedges.map(wedge => {
         const action = actions.find(candidate => candidate.id === wedge.id)
         if (action === undefined) return null

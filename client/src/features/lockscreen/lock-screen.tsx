@@ -14,6 +14,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { readMetrics } from '../system/metrics-client.ts'
 import type { Metrics } from '../system/metrics-client.ts'
 import { useWeather } from './weather.ts'
@@ -108,7 +109,15 @@ export function LockScreen(props: LockScreenProps): React.ReactElement | null {
 
   if (!open) return null
 
-  return (
+  // Portalled onto the document body, not left inside the float.
+  //
+  // The float lives in the shell's overlay layer, and that layer sits inside
+  // the app frame. A fixed overlay left there is positioned against whatever
+  // transformed ancestor it happens to have, so it covered the app's body but
+  // not its title bar — the workbench header stayed visible above the lock.
+  // On the body there is no such ancestor, and the overlay is the whole
+  // viewport, which is what a lock screen is.
+  return createPortal(
     <div className="mf-lock" role="dialog" aria-modal="true" aria-label={t('lock.title')}>
       <button type="button" className="mf-lock-close" onClick={onClose} aria-label={t('lock.close')}>
         ×
@@ -117,7 +126,8 @@ export function LockScreen(props: LockScreenProps): React.ReactElement | null {
       <WeatherRow weather={weather} t={t} />
       <MetricsRow metrics={metrics} error={metricsError} t={t} />
       <ActiveSessions t={t} useSessions={props.useSessions} />
-    </div>
+    </div>,
+    document.body,
   )
 }
 

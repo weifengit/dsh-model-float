@@ -110,20 +110,21 @@ export function visibleArc(
 
   if (horizontal === 'none' && vertical === 'none') return { start: up, span: TAU }
   if (horizontal === 'none') {
-    // Parked against the top: the visible half is the bottom half (180°..360°).
-    // Parked against the bottom: the visible half is the top half (0°..180°).
-    return vertical === 'top' ? { start: right, span: half } : { start: up, span: half }
+    // Against the top edge, the ring reaches *down* into the screen (90°..270°).
+    // Against the bottom edge, it reaches up (270°..90°, through 12 o'clock).
+    return vertical === 'top' ? { start: right, span: half } : { start: left, span: half }
   }
   if (vertical === 'none') {
-    // Parked against the left: the visible half is the right half (270°..90°).
-    // Parked against the right: the visible half is the left half (90°..270°).
-    return horizontal === 'left' ? { start: left, span: half } : { start: right, span: half }
+    // Against the left edge, the ring reaches right (0°..180°).
+    // Against the right edge, it reaches left (180°..360°).
+    return horizontal === 'left' ? { start: up, span: half } : { start: down, span: half }
   }
-  // A corner: the visible quarter points away from both edges.
-  if (horizontal === 'right' && vertical === 'bottom') return { start: up, span: quarter }
-  if (horizontal === 'right' && vertical === 'top') return { start: right, span: quarter }
-  if (horizontal === 'left' && vertical === 'bottom') return { start: left, span: quarter }
-  return { start: down, span: quarter }
+  // A corner: the visible quarter reaches diagonally into the screen, away
+  // from both edges it is parked against.
+  if (horizontal === 'left' && vertical === 'top') return { start: right, span: quarter }
+  if (horizontal === 'right' && vertical === 'top') return { start: down, span: quarter }
+  if (horizontal === 'left' && vertical === 'bottom') return { start: up, span: quarter }
+  return { start: left, span: quarter }
 }
 
 /**
@@ -247,57 +248,75 @@ export function arcPath(
   outer = OUTER_RADIUS,
 ): string {
   const { start, span } = visibleArc(horizontal, vertical)
-  const end = start + span
   const point = (radius: number, angle: number): [number, number] => [
     Math.sin(angle) * radius,
     -Math.cos(angle) * radius,
   ]
-  const [x1, y1] = point(outer, start)
-  const [x2, y2] = point(outer, end)
-  const [x3, y3] = point(inner, end)
-  const [x4, y4] = point(inner, start)
-  const large = end - start > Math.PI ? 1 : 0
-  return [
-    `M ${x1.toFixed(2)} ${y1.toFixed(2)}`,
-    `A ${outer} ${outer} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`,
-    `L ${x3.toFixed(2)} ${y3.toFixed(2)}`,
-    `A ${inner} ${inner} 0 ${large} 0 ${x4.toFixed(2)} ${y4.toFixed(2)}`,
-    'Z',
-  ].join(' ')
+  const outerRing = sectorArc(outer, start, span, true, point)
+  const innerRing = sectorArc(inner, start + span, span, false, point)
+  return [outerRing, innerRing, 'Z'].join(' ')
 }
 
 /**
- * The offset from the whale's centre to the ring's centre, in px.
+ * One radius of an annular sector, as a sequence of arcs.
  *
- * The ring is drawn around the whale, but a whale parked against an edge is
- * still a seat's width from that edge — so a quarter ring drawn around the
- * whale's centre would have half of it off-screen, and the wedges there would
- * be unreachable.
+ * @param radius - the radius to draw at.
+ * @param from - the starting angle.
+ * @param sweep - how far the arc runs.
+ * @param clockwise - which way round.
+ * @param point - maps an angle to a coordinate.
+ * @returns the path data.
+ */
+function sectorArc(
+  radius: number,
+  from: number,
+  sweep: number,
+  clockwise: boolean,
+  point: (radius: number, angle: number) => [number, number],
+): string {
+  const parts = [`M ${point(radius, from).map(n => n.toFixed(2)).join(' ')}`]
+  let angle = from
+  // A full circle cannot be one arc: its endpoints coincide, and an SVG arc
+  // with identical endpoints draws nothing at all. Two half turns are the
+  // usual way round it.
+  for (const each of (sweep >= Math.PI * 2 - 1e-6 ? [Math.PI, Math.PI] : [sweep])) {
+    const [x, y] = point(radius, angle + each)
+    parts.push(`A ${radius} ${radius} 0 ${each > Math.PI ? 1 : 0} ${clockwise ? 1 : 0} ${x.toFixed(2)} ${y.toFixed(2)}`)
+    angle += each
+  }
+  return parts.join(' ')
+}
+
+/**
+ * The outer edge of the visible arc, as an *open* path.
  *
- * When the float is against an edge, the ring's centre moves *onto* that edge,
- * so the visible quarter is exactly the quarter that fits on screen. The whale
- * then sits inside the ring rather than at its centre, which is what the
- * cropped arc is for.
- *
- * The offset is expressed as a *direction* rather than a distance: the ring
- * slides all the way onto the edge, whatever the viewport size.
+ * The band's own outline includes its two radial closing edges, and stroking
+ * those draws a straight line from the inner radius to the outer one at each
+ * end — a visible seam above the whale. A rim drawn as an arc alone has no
+ * such edges, so the ring gets its outline without the seam.
  *
  * @param horizontal - 'left', 'right' or 'none'.
  * @param vertical - 'top', 'bottom' or 'none'.
- * @param seat - the whale seat's edge, in px.
- * @returns the offset to add to the whale's centre.
+ * @param radius - the radius to draw at.
+ * @returns the path data.
  */
-export function ringOffset(
+export function arcRimPath(
   horizontal: 'left' | 'right' | 'none',
   vertical: 'top' | 'bottom' | 'none',
-  seat: number,
-): { x: number, y: number } {
-  // The ring's centre moves *inward*, onto the edge the float is against: a
-  // float at the left edge has its whale's centre half a seat from that edge,
-  // and the ring has to slide that half seat further in for the visible
-  // quarter to be the quarter that fits.
-  return {
-    x: horizontal === 'left' ? seat / 2 : horizontal === 'right' ? -seat / 2 : 0,
-    y: vertical === 'top' ? seat / 2 : vertical === 'bottom' ? -seat / 2 : 0,
+  radius = OUTER_RADIUS,
+): string {
+  const { start, span } = visibleArc(horizontal, vertical)
+  const point = (angle: number): [number, number] => [
+    Math.sin(angle) * radius,
+    -Math.cos(angle) * radius,
+  ]
+  const parts = [`M ${point(start).map(n => n.toFixed(2)).join(' ')}`]
+  let angle = start
+  for (const each of (span >= Math.PI * 2 - 1e-6 ? [Math.PI, Math.PI] : [span])) {
+    const [x, y] = point(angle + each)
+    parts.push(`A ${radius} ${radius} 0 ${each > Math.PI ? 1 : 0} 1 ${x.toFixed(2)} ${y.toFixed(2)}`)
+    angle += each
   }
+  return parts.join(' ')
 }
+

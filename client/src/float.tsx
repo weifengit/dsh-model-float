@@ -20,7 +20,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Ring } from './ring/ring.tsx'
-import { ringOffset } from './ring/geometry.ts'
 import { WhaleMark } from './whale.tsx'
 import { VendorCard } from './features/free-model/vendor-card.tsx'
 import { LockScreen } from './features/lockscreen/lock-screen.tsx'
@@ -154,6 +153,44 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  // A click anywhere outside the float dismisses the card.
+  //
+  // The card is opened by an action, not by hovering, so once it is up the
+  // pointer is free to wander into the page — and there it has no way back:
+  // the card only closed by running the same action again, which reads as a
+  // panel that cannot be dismissed. A pointerdown outside the float is the
+  // gesture everyone already expects.
+  useEffect(() => {
+    if (!cardOpen) return undefined
+    const onPointerDown = (event: PointerEvent) => {
+      const root = rootRef.current
+      if (root === null) return
+      const target = event.target
+      // The card and the whale are both inside the root; the ring too. A
+      // press on any of them is the float's own, and belongs to it.
+      if (target instanceof Node && root.contains(target)) return
+      setCardOpen(false)
+    }
+    // Capture, so the card closes on the press rather than after whatever the
+    // page does with the click.
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [cardOpen])
+
+  // A press *inside* an iframe never reaches this document — the frame has its
+  // own — so the handler above cannot see it. The browser still announces the
+  // focus change: the window blurs, and the element that took focus is the
+  // frame. Without this, clicking a plugin's embedded preview would leave the
+  // card hanging open with no way to dismiss it.
+  useEffect(() => {
+    if (!cardOpen) return undefined
+    const onBlur = () => {
+      if (document.activeElement instanceof HTMLIFrameElement) setCardOpen(false)
+    }
+    window.addEventListener('blur', onBlur)
+    return () => window.removeEventListener('blur', onBlur)
+  }, [cardOpen])
+
   // ── drag ──────────────────────────────────────────────────────────────────
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return
@@ -232,14 +269,6 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
     }
   }, [placement.x, placement.y, viewport.width, viewport.height])
 
-  // The ring slides onto the edge the float is against, so the visible quarter
-  // is exactly the quarter that fits on screen. Without this, a float in a
-  // corner would have half its ring off-screen and those wedges unreachable.
-  const ringShift = useMemo(
-    () => ringOffset(edges.horizontal, edges.vertical, WHALE_SEAT),
-    [edges.horizontal, edges.vertical],
-  )
-
   // The card opens on the side with room, and the ring's wedges on the arc
   // that is on screen.
   const cardSide = placement.x > viewport.width / 2 ? 'left' : 'right'
@@ -259,7 +288,6 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
           open={ringOpen}
           horizontal={edges.horizontal}
           vertical={edges.vertical}
-          offset={ringShift}
           hovered={hovered}
           onHover={setHovered}
           onOpen={openSoon}

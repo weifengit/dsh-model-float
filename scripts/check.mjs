@@ -86,9 +86,12 @@ console.log('the ring')
   const geometry = readFileSync(join(root, 'client', 'src', 'ring', 'geometry.ts'), 'utf8')
   const ring = readFileSync(join(root, 'client', 'src', 'ring', 'ring.tsx'), 'utf8')
   const icons = readFileSync(join(root, 'client', 'src', 'ring', 'icons.tsx'), 'utf8')
-  // The ring slides onto the edge the float is against, so the visible quarter
-  // is the quarter that fits on screen.
-  check('the ring slides onto the edge', geometry.includes('ringOffset'))
+  const lockSource = readFileSync(join(root, 'client', 'src', 'features', 'lockscreen', 'lock-screen.tsx'), 'utf8')
+  // The visible arc must reach *into* the screen: a float against the left
+  // edge shows the right half, one in the top-left corner shows the
+  // bottom-right quarter. Getting these backwards puts the ring off-screen.
+  check('the ring reaches into the screen', geometry.includes('visibleArc'))
+  check('the lock screen is portalled onto the body', lockSource.includes('createPortal'))
   check('the ring is drawn with line art', icons.includes('strokeWidth'))
   check('the icons are inline svg, not emoji', icons.includes('<svg'))
   check('no emoji in the ring', !ring.includes('action.glyph'))
@@ -112,6 +115,14 @@ console.log('the lock screen')
   check('the lock screen shows the system metrics', lock.includes('mf-lock-metrics'))
   check('the lock screen shows the active sessions', lock.includes('mf-lock-sessions'))
   check('the metrics come from the Host', metrics.includes('/api/model-float/metrics'))
+  // os.networkInterfaces() has no byte counters, so the sampler must read the
+  // operating system's own.
+  const hostMetrics = readFileSync(join(root, 'src', 'metrics.js'), 'utf8')
+  check('the network counters come from the OS', hostMetrics.includes('netstat'))
+  check('linux counters are read from procfs', hostMetrics.includes('/proc/net/dev'))
+  // Node does not expose gc without --expose-gc; the flag can still be turned
+  // on for a throwaway V8 context to obtain the real collector.
+  check('the collector is obtained without a launch flag', hostMetrics.includes('setFlagsFromString'))
 }
 
 console.log('bundle shape')
@@ -201,6 +212,9 @@ console.log('model hiding')
   // would call it usable and put it back.
   check('the switch hides its own vendors from the list', panel.includes('hiddenVendors.includes'))
   check('the float renders the ring', float.includes('<Ring'))
+  // The card is opened by an action, so an outside press is the only way back.
+  check('an outside press dismisses the card', float.includes('root.contains(target)'))
+  check('a press inside an iframe also dismisses it', float.includes('HTMLIFrameElement'))
   check('the float renders the lock screen', float.includes('<LockScreen'))
   // The per-vendor buttons are gone: the switch is the only control.
   check('no per-vendor hide button remains', !panel.includes('mf-hide-btn'))
