@@ -31,8 +31,12 @@ export const CSS = `
 }
 .mf-card-shell {
   /* The seat is 54 × 54 — the same square the reference music ball uses — so
-     the float is the same size and drags with the same hitbox. */
-  position: relative;
+     the float is the same size and drags with the same hitbox.
+     It is absolutely placed so it does not push the whale down the flow: the
+     whale is the float's anchor, and the card is what hangs off it. */
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 54px;
   height: 54px;
   pointer-events: none;
@@ -44,6 +48,8 @@ export const CSS = `
    upper half, so it never runs off the screen. */
 .mf-root[data-mf-side="left"] .mf-card { right: 0; }
 .mf-root[data-mf-side="right"] .mf-card { left: 0; }
+/* The whale sits at the root's origin; the card hangs beside it. */
+.mf-root > .mf-whale-btn { position: absolute; left: 0; top: 0; }
 .mf-root[data-mf-vertical="up"] .mf-card { bottom: calc(100% + 10px); }
 .mf-root[data-mf-vertical="down"] .mf-card { top: calc(100% + 10px); }
 .mf-root[data-mf-side="left"] .mf-card { transform-origin: bottom left; }
@@ -367,5 +373,183 @@ export const CSS = `
 @keyframes mf-swim {
   0%, 100% { transform: translateY(0) rotate(-1.5deg); }
   50% { transform: translateY(-4px) rotate(1.5deg); }
+}
+
+/* ── the ring ───────────────────────────────────────────────────────────── */
+
+/* The ring is centred on the *whale*, which is 54 px wide: the seat's own
+   centre, not the shell's corner. */
+.mf-ring {
+  position: absolute;
+  left: 27px;
+  top: 27px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  overflow: visible;
+  animation: mf-ring-in 160ms ease-out;
+}
+
+@keyframes mf-ring-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.82); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* The band behind the wedges: a soft, blurred disc that reads as glass
+   rather than as a flat plate. The wedges are drawn on top of it, so the gaps
+   between them still look like part of the ring. */
+.mf-ring-band {
+  fill: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #2c2c2e) 82%, transparent);
+  stroke: color-mix(in srgb, var(--dsw-alias-border-l3, #ffffff26) 70%, transparent);
+  stroke-width: 1;
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.4));
+}
+
+.mf-ring-band-glow {
+  fill: none;
+  stroke: var(--mf-brand-blue, #4d6bfe);
+  stroke-width: 1.5;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.mf-ring-wedge-group { cursor: pointer; }
+.mf-ring-wedge {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1;
+  transition: fill 130ms ease;
+}
+.mf-ring-wedge:hover,
+.mf-ring-wedge.is-active {
+  fill: color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 30%, transparent);
+}
+.mf-ring-wedge.is-disabled { cursor: default; opacity: 0.35; }
+
+/* The icon is the pointer's target: an SVG has no background, so the parts
+   of it that are not painted do not receive pointer events at all. Letting the
+   icon take them is what makes a wedge clickable where its glyph is. */
+.mf-ring-glyph {
+  stroke: var(--dsw-alias-label-primary, #f9fafb);
+  pointer-events: auto;
+  user-select: none;
+  cursor: pointer;
+  transition: stroke 120ms ease;
+}
+.mf-ring-glyph.is-active {
+  stroke: #fff;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 90%, transparent));
+}
+
+/* ── the lock screen ─────────────────────────────────────────────────────── */
+
+.mf-lock {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 40px;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(28, 30, 46, 0.92), rgba(8, 9, 14, 0.97));
+  backdrop-filter: blur(26px) saturate(120%);
+  color: #f3f5fb;
+  font-family: var(--dsw-alias-font-family, ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif);
+  animation: mf-lock-in 200ms ease-out;
+}
+
+@keyframes mf-lock-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mf-lock-close {
+  position: absolute;
+  top: 22px;
+  right: 26px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mf-lock-close:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+
+.mf-lock-clock { text-align: center; }
+.mf-lock-time {
+  font-size: clamp(56px, 11vw, 132px);
+  font-weight: 200;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.mf-lock-date { margin-top: 10px; font-size: 15px; color: rgba(255, 255, 255, 0.66); }
+
+.mf-lock-weather { display: flex; align-items: center; gap: 12px; font-size: 16px; }
+.mf-lock-weather-icon { font-size: 30px; }
+.mf-lock-weather-temp { font-size: 30px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.mf-lock-weather-desc { color: rgba(255, 255, 255, 0.76); }
+.mf-lock-weather-place { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
+
+.mf-lock-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px 26px;
+  width: min(720px, 90vw);
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.mf-lock-metric { display: flex; flex-direction: column; gap: 5px; }
+.mf-lock-metric-label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); }
+.mf-lock-metric-value { font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.mf-lock-meter { display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.mf-lock-meter-fill { display: block; height: 100%; background: var(--mf-brand-blue, #4d6bfe); transition: width 400ms ease; }
+
+.mf-lock-sessions { width: min(720px, 90vw); }
+.mf-lock-sessions-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); margin-bottom: 8px; }
+.mf-lock-sessions ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mf-lock-sessions li { display: flex; align-items: center; gap: 9px; font-size: 14px; color: rgba(255, 255, 255, 0.86); }
+.mf-lock-session-dot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px rgba(52, 211, 153, 0.8); }
+.mf-lock-session-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mf-lock-muted { color: rgba(255, 255, 255, 0.42); font-size: 13px; }
+
+/* ── the action notice ──────────────────────────────────────────────────── */
+
+/* A screen-anchored toast, not a bubble on the float.
+   Anchored to the float it landed exactly where the ring's wedges are, and
+   being clickable it swallowed the ring's own clicks — an action's result
+   message would then block the very menu that produced it.
+   Anchoring it to the viewport keeps it clear of the ring wherever the float
+   has been dragged, and pointer-events: none means it can never intercept a
+   click wherever the two happen to overlap. */
+.mf-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  max-width: 340px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2, rgba(44, 44, 46, 0.94));
+  border: 1px solid var(--dsw-alias-border-l3, rgba(255, 255, 255, 0.12));
+  color: var(--dsw-alias-label-primary, #f9fafb);
+  font-size: 12px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.36);
+  pointer-events: none;
+  animation: mf-notice-in 180ms ease-out;
+}
+
+@keyframes mf-notice-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 `

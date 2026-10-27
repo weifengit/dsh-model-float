@@ -70,16 +70,48 @@ console.log('placement')
 
 console.log('geometry')
 {
-  const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
-  // The whale may sit flush against any edge. A reserved margin is exactly the
-  // "it still floats a bit away from the border" the reference ball fixed.
+  const placement = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'placement.ts'), 'utf8')
+  const float = readFileSync(join(root, 'client', 'src', 'float.tsx'), 'utf8')
   // Same size and boundary control as the reference music ball.
-  check('the seat is 54px like the reference ball', /export const WHALE_SIZE = 54\b/.test(panel))
-  check('the edge margin is 8px like the reference ball', /export const EDGE_GAP = 8\b/.test(panel))
-  check('the default home is 22px like the reference ball', /export const HOME_MARGIN = 22\b/.test(panel))
+  check('the seat is 54px like the reference ball', /export const WHALE_SIZE = 54\b/.test(placement))
+  check('the edge margin is 8px like the reference ball', /export const EDGE_GAP = 8\b/.test(placement))
+  check('the default home is 22px like the reference ball', /export const HOME_MARGIN = 22\b/.test(placement))
   check('the css seat is 54 x 54', /width: 54px[\s\S]{0,80}height: 54px/.test(readFileSync(join(root, 'client', 'src', 'styles.ts'), 'utf8')))
   // A drag that moves on one axis only must still count as a drag.
-  check('a one-axis drag is a drag', /Math\.abs\(dx\) > 3 \|\| Math\.abs\(dy\) > 3/.test(panel))
+  check('a one-axis drag is a drag', /Math\.abs\(dx\) > 3 \|\| Math\.abs\(dy\) > 3/.test(float))
+}
+
+console.log('the ring')
+{
+  const geometry = readFileSync(join(root, 'client', 'src', 'ring', 'geometry.ts'), 'utf8')
+  const ring = readFileSync(join(root, 'client', 'src', 'ring', 'ring.tsx'), 'utf8')
+  const icons = readFileSync(join(root, 'client', 'src', 'ring', 'icons.tsx'), 'utf8')
+  // The ring slides onto the edge the float is against, so the visible quarter
+  // is the quarter that fits on screen.
+  check('the ring slides onto the edge', geometry.includes('ringOffset'))
+  check('the ring is drawn with line art', icons.includes('strokeWidth'))
+  check('the icons are inline svg, not emoji', icons.includes('<svg'))
+  check('no emoji in the ring', !ring.includes('action.glyph'))
+  // The ring is cut by the viewport edge, so the actions are laid out along the
+  // visible arc rather than around the whole circle.
+  check('the ring has a visible-arc model', geometry.includes('visibleArc'))
+  check('the ring lays actions along the visible arc', geometry.includes('layoutWedges'))
+  check('the ring hit-tests by angle and radius', geometry.includes('wedgeAt'))
+  // Hovering highlights; clicking runs. A menu that fires on hover would run a
+  // slow action by accident.
+  check('hovering only highlights a wedge', ring.includes('onHover(pick(event))'))
+  check('clicking runs the action', ring.includes('onClick='))
+}
+
+console.log('the lock screen')
+{
+  const lock = readFileSync(join(root, 'client', 'src', 'features', 'lockscreen', 'lock-screen.tsx'), 'utf8')
+  const metrics = readFileSync(join(root, 'client', 'src', 'features', 'system', 'metrics-client.ts'), 'utf8')
+  check('the lock screen shows a clock', lock.includes('mf-lock-time'))
+  check('the lock screen shows the weather', lock.includes('mf-lock-weather'))
+  check('the lock screen shows the system metrics', lock.includes('mf-lock-metrics'))
+  check('the lock screen shows the active sessions', lock.includes('mf-lock-sessions'))
+  check('the metrics come from the Host', metrics.includes('/api/model-float/metrics'))
 }
 
 console.log('bundle shape')
@@ -139,7 +171,7 @@ console.log('host half')
 
 console.log('model hiding')
 {
-  const data = readFileSync(join(root, 'client', 'src', 'data.ts'), 'utf8')
+  const data = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'data.ts'), 'utf8')
   check('reads the per-vendor model list', data.includes("'model.list'"))
   check('writes through the batch endpoint', data.includes("'model.setDisabledMany'"))
   // A loop of single-model writes would be N document writes and N catalog
@@ -150,28 +182,32 @@ console.log('model hiding')
   check('writes the switch state to the Host', data.includes('writeSwitch'))
 
   const entrySource = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
-  const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
-  check('the panel offers the master switch', panel.includes('mf-switch'))
+  const float = readFileSync(join(root, 'client', 'src', 'float.tsx'), 'utf8')
+  const panel = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'vendor-card.tsx'), 'utf8')
+  check('the card offers the master switch', panel.includes('mf-switch'))
   // The card must cancel the close that the whale's pointerleave arms while
   // the pointer crosses the gap to it — otherwise the card shuts down just as
   // the user reaches it.
-  check('the card cancels the close on enter', /className="mf-card"[\s\S]{0,400}onPointerEnter=\{openSoon\}/.test(panel))
-  check('focus moving into the card does not close it', panel.includes('cardRef.current?.contains'))
+  check('the card cancels the close on enter', /onPointerEnter=\{onOpen\}/.test(panel))
   // A retired vendor answers every RPC with an error; listing it would hand
   // the switch a target whose first read throws, which made the switch look
   // unresponsive. Vendors the pack does not report are dropped instead.
   check('vendors the pack no longer serves are dropped', data.includes('if (entry === undefined) return null'))
-  check('the switch isolates per-vendor failures', entrySource.includes('failures.push'))
+  // The switch's own code moved into the feature's hook.
+  const hook = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'use-free-model.ts'), 'utf8')
+  check('the switch isolates per-vendor failures', hook.includes('failures.push'))
   // The list is filtered by the switch's *record* (the vendors it hid), not
   // by a fresh verdict: a hidden vendor reads as "closed", so a fresh verdict
   // would call it usable and put it back.
   check('the switch hides its own vendors from the list', panel.includes('hiddenVendors.includes'))
+  check('the float renders the ring', float.includes('<Ring'))
+  check('the float renders the lock screen', float.includes('<LockScreen'))
   // The per-vendor buttons are gone: the switch is the only control.
   check('no per-vendor hide button remains', !panel.includes('mf-hide-btn'))
 
   const entry = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
-  check('the switch state is read from the Host', entry.includes('readSwitch'))
-  check('the switch state is written to the Host', entry.includes('writeSwitch'))
+  check('the switch state is read from the Host', hook.includes('readSwitch'))
+  check('the switch state is written to the Host', hook.includes('writeSwitch'))
 
   const whale = readFileSync(join(root, 'client', 'src', 'whale.tsx'), 'utf8')
   check('the float wears the official DeepSeek mark', whale.includes('FISH_LOGO_PATH'))

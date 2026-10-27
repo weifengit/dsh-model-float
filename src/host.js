@@ -14,6 +14,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { JsonStore, INITIAL_STATE, STATE_FILE, DATA_DIR_NAME, normalizeState, resolveDshHome } from './store.js'
+import { sharedSampler, requestGarbageCollection } from './metrics.js'
 
 /** The plugin's name, as the harness knows it. */
 export const name = 'model-float'
@@ -60,6 +61,7 @@ export function apply(ctx, _config = {}) {
   const store = new JsonStore(path.join(dataDir, STATE_FILE), INITIAL_STATE, {
     log: message => logger.warn?.(`model-float: ${message}`),
   })
+  const sampler = sharedSampler()
 
   // The state is the durable part; the route is how the browser reaches it.
   const handler = async (req, res) => {
@@ -78,6 +80,15 @@ export function apply(ctx, _config = {}) {
     try {
       if (method === 'GET' && route === '/switch') {
         return send(200, normalizeState(store.get()))
+      }
+      if (method === 'GET' && route === '/metrics') {
+        // One sample per poll: the rate is the delta between two polls.
+        return send(200, sampler.sample())
+      }
+      if (method === 'POST' && route === '/memory/release') {
+        const result = requestGarbageCollection()
+        // The reading is taken again so the page can show what changed.
+        return send(200, { ...result, memory: sampler.sample() })
       }
       if (method === 'POST' && route === '/switch') {
         const body = await readJson(req)
