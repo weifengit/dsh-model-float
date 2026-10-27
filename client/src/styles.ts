@@ -22,7 +22,12 @@ export const CSS = `
 .mf-root {
   --mf-brand-blue: #4d6bfe;
   position: fixed;
-  z-index: 30;
+  /* Above every layer the app draws (splitters 99, pane resizers 100, the
+     workbench title bar 40, the composer seat 35) and below its toasts
+     (1200) — a notification is allowed to cover the float, a splitter is not.
+     The float is portalled onto the body, so this value is not confined by
+     the overlay layer's own stacking context. */
+  z-index: 1000;
   pointer-events: none;
   font-family: var(--dsw-alias-font-family, ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif);
   font-size: 13px;
@@ -397,18 +402,27 @@ export const CSS = `
 /* The band behind the wedges: a soft, blurred disc that reads as glass
    rather than as a flat plate. The wedges are drawn on top of it, so the gaps
    between them still look like part of the ring. */
+/* The pointer target. Transparent but painted, so it takes events where the
+   drawing has holes; never visible. */
+.mf-ring-hit {
+  fill: transparent;
+  stroke: none;
+}
+
 .mf-ring-band {
-  fill: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #2c2c2e) 82%, transparent);
+  /* A deep glass with a trace of the brand blue, rather than flat grey: the
+     ring is the whale's own furniture and should read as the same material. */
+  fill: color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 12%, rgba(19, 21, 32, 0.72));
   /* No stroke: the band is a closed path, so stroking it would also draw its
      two radial edges — the straight seam that appeared above the whale. */
   stroke: none;
-  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.42));
+  filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.46));
 }
 
 /* The outline, as an open arc: an edge without the radial seams. */
 .mf-ring-rim {
   fill: none;
-  stroke: color-mix(in srgb, var(--dsw-alias-border-l3, #ffffff26) 75%, transparent);
+  stroke: color-mix(in srgb, #ffffff 24%, transparent);
   stroke-width: 1;
   pointer-events: none;
 }
@@ -500,9 +514,11 @@ export const CSS = `
 
 .mf-lock-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 14px 26px;
-  width: min(720px, 90vw);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 30px;
+  /* Wide enough for the network line at its worst: the read and write rates
+     together, each with a unit, wrap onto two lines in a narrower grid. */
+  width: min(900px, 92vw);
   padding: 20px 24px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.05);
@@ -510,11 +526,17 @@ export const CSS = `
 }
 .mf-lock-metric { display: flex; flex-direction: column; gap: 5px; }
 .mf-lock-metric-label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); }
-.mf-lock-metric-value { font-size: 20px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.mf-lock-metric-value {
+  font-size: 20px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  /* A rate that changes digits must not push the layout around. */
+  white-space: nowrap;
+}
 .mf-lock-meter { display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
 .mf-lock-meter-fill { display: block; height: 100%; background: var(--mf-brand-blue, #4d6bfe); transition: width 400ms ease; }
 
-.mf-lock-sessions { width: min(720px, 90vw); }
+.mf-lock-sessions { width: min(900px, 92vw); }
 .mf-lock-sessions-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); margin-bottom: 8px; }
 .mf-lock-sessions ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .mf-lock-sessions li { display: flex; align-items: center; gap: 9px; font-size: 14px; color: rgba(255, 255, 255, 0.86); }

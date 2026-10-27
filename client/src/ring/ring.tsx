@@ -18,7 +18,17 @@
  */
 
 import React, { useMemo, useRef, useState } from 'react'
-import { arcPath, arcRimPath, layoutWedges, wedgeAt, wedgePath, OUTER_RADIUS } from './geometry.ts'
+import {
+  arcPath,
+  arcRimPath,
+  layoutWedges,
+  wedgeAt,
+  wedgePath,
+  HIT_INNER_RADIUS,
+  HIT_OUTER_SLACK,
+  OUTER_RADIUS,
+  INNER_RADIUS,
+} from './geometry.ts'
 import { RingIcon } from './icons.tsx'
 import type { Action } from '../features/registry.ts'
 
@@ -96,6 +106,17 @@ export function Ring(props: RingProps): React.ReactElement | null {
       onPointerLeave={() => { onHover(undefined); onClose() }}
       aria-label={t('ring.label')}
     >
+      {/* The hit area, and it is drawn first so the wedges paint over it.
+          SVG gives pointer events to painted geometry only, so the band's
+          inner hole and the gaps between wedges are invisible to the pointer —
+          crossing them armed the float's close and the ring vanished before it
+          could be reached. This path is `fill: transparent` (which does take
+          events, where `fill: none` does not) and covers the whole arc from
+          just outside the whale to a little past the rim. */}
+      <path
+        className="mf-ring-hit"
+        d={arcPath(horizontal, vertical, HIT_INNER_RADIUS, OUTER_RADIUS + HIT_OUTER_SLACK)}
+      />
       {/* The band behind the wedges, so a gap between them still reads as
           part of the ring rather than as a hole. */}
       <path className="mf-ring-band" d={band} />

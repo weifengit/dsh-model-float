@@ -19,6 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Ring } from './ring/ring.tsx'
 import { WhaleMark } from './whale.tsx'
 import { VendorCard } from './features/free-model/vendor-card.tsx'
@@ -126,7 +127,10 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
 
   const closeSoon = useCallback(() => {
     if (timerRef.current !== undefined) window.clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => { setRingOpen(false); setHovered(undefined) }, 320)
+    // Long enough to cross to the ring at a walking pace, and long enough to
+    // think between two wedges. The ring's own enter cancels this anyway, so
+    // the only thing a long delay can do is be forgiving.
+    timerRef.current = window.setTimeout(() => { setRingOpen(false); setHovered(undefined) }, 700)
   }, [])
 
   useEffect(() => () => {
@@ -274,7 +278,17 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
   const cardSide = placement.x > viewport.width / 2 ? 'left' : 'right'
   const cardVertical = placement.y > viewport.height / 2 ? 'up' : 'down'
 
-  return (
+  // Portalled onto the document body.
+  //
+  // The float is handed a seat in the shell's overlay layer, and that layer
+  // has a z-index of its own — a stacking context. Everything inside it,
+  // whatever its own z-index, is confined below whatever the app puts above
+  // that context. The workbench has splitters at 99, pane resizers at 100 and
+  // a title bar at 40, so a whale dragged over any of them became unreachable
+  // and could not be dragged again. On the body there is no such ancestor, and
+  // the float is free to sit above the app's chrome — which is what a floating
+  // widget is for. The lock screen is portalled for the same reason.
+  return createPortal(
     <>
       <div
         className="mf-root"
@@ -332,7 +346,8 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
         useSessions={props.useSessions as never}
         t={t}
       />
-    </>
+    </>,
+    document.body,
   )
 
   /**

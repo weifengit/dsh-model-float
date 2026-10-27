@@ -17,11 +17,33 @@
  * @module client/src/ring/geometry.ts
  */
 
-/** The ring's inner radius, in px — the whale's seat. */
-export const INNER_RADIUS = 34
+/**
+ * The ring's inner radius, in px.
+ *
+ * Must clear the whale's *corners*, not its edge: the seat is a 54 px square,
+ * so its corners sit 27·√2 ≈ 38 px from the centre. An inner radius below that
+ * lets the ring's inner edge cut across the whale, and the band shows through
+ * the gaps in the mark as a grey crescent.
+ */
+export const INNER_RADIUS = 40
 
 /** The ring's outer radius, in px. */
 export const OUTER_RADIUS = 66
+
+/**
+ * The radius the pointer is measured from, in px.
+ *
+ * Deliberately smaller than {@link INNER_RADIUS}: the drawn ring starts at
+ * 40 px so it clears the whale, but if the *hit* area started there too, the
+ * few px between the whale's edge and the band would be dead space. Moving
+ * the pointer off the whale would cross that gap, land on nothing, and the
+ * ring would close before it could be reached — which is why the lock-screen
+ * wedge in a half ring was so hard to hit.
+ */
+export const HIT_INNER_RADIUS = 22
+
+/** How far past the rim the pointer still counts as on the ring, in px. */
+export const HIT_OUTER_SLACK = 6
 
 /**
  * The four edges a float can be parked against.
@@ -194,7 +216,10 @@ export function angleOf(dx: number, dy: number): number {
  */
 export function wedgeAt(wedges: readonly Wedge[], dx: number, dy: number): string | undefined {
   const distance = Math.hypot(dx, dy)
-  if (distance < INNER_RADIUS || distance > OUTER_RADIUS) return undefined
+  // The hit area is more generous than the drawing, at both ends: inward so
+  // leaving the whale leads straight onto the ring, outward so the rim is not
+  // a one-pixel target.
+  if (distance < HIT_INNER_RADIUS || distance > OUTER_RADIUS + HIT_OUTER_SLACK) return undefined
   const angle = angleOf(dx, dy)
   for (const wedge of wedges) {
     // The angle is measured *relative to the wedge's start*, so a wedge that

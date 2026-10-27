@@ -87,11 +87,23 @@ console.log('the ring')
   const ring = readFileSync(join(root, 'client', 'src', 'ring', 'ring.tsx'), 'utf8')
   const icons = readFileSync(join(root, 'client', 'src', 'ring', 'icons.tsx'), 'utf8')
   const lockSource = readFileSync(join(root, 'client', 'src', 'features', 'lockscreen', 'lock-screen.tsx'), 'utf8')
+  const floatSource = readFileSync(join(root, 'client', 'src', 'float.tsx'), 'utf8')
   // The visible arc must reach *into* the screen: a float against the left
   // edge shows the right half, one in the top-left corner shows the
   // bottom-right quarter. Getting these backwards puts the ring off-screen.
   check('the ring reaches into the screen', geometry.includes('visibleArc'))
   check('the lock screen is portalled onto the body', lockSource.includes('createPortal'))
+  // The float is portalled too: inside the shell's overlay layer its z-index is
+  // confined by that layer's stacking context, so the workbench's splitters and
+  // resizers painted over it and it could not be grabbed.
+  check('the float is portalled onto the body', floatSource.includes('createPortal'))
+  check('the float sits above the app chrome', /z-index: 1000/.test(readFileSync(join(root, 'client', 'src', 'styles.ts'), 'utf8')))
+  // The ring is drawn from a radius past the whale's corners, or the band shows
+  // through the mark as a crescent; the hit area starts inside that, or the gap
+  // between whale and ring is dead and the ring closes before it is reached.
+  check('the ring clears the whale corners', /INNER_RADIUS = 4[0-9]\b/.test(geometry))
+  check('the hit area starts inside the drawn ring', geometry.includes('HIT_INNER_RADIUS'))
+  check('there is a painted hit path', ring.includes('mf-ring-hit'))
   check('the ring is drawn with line art', icons.includes('strokeWidth'))
   check('the icons are inline svg, not emoji', icons.includes('<svg'))
   check('no emoji in the ring', !ring.includes('action.glyph'))
