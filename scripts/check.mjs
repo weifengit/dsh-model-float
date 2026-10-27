@@ -152,6 +152,11 @@ console.log('model hiding')
   const entrySource = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
   const panel = readFileSync(join(root, 'client', 'src', 'panel.tsx'), 'utf8')
   check('the panel offers the master switch', panel.includes('mf-switch'))
+  // The card must cancel the close that the whale's pointerleave arms while
+  // the pointer crosses the gap to it — otherwise the card shuts down just as
+  // the user reaches it.
+  check('the card cancels the close on enter', /className="mf-card"[\s\S]{0,400}onPointerEnter=\{openSoon\}/.test(panel))
+  check('focus moving into the card does not close it', panel.includes('cardRef.current?.contains'))
   // A retired vendor answers every RPC with an error; listing it would hand
   // the switch a target whose first read throws, which made the switch look
   // unresponsive. Vendors the pack does not report are dropped instead.

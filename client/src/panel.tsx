@@ -172,6 +172,8 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
     originY: number
   } | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  /** The card element, so focus moving inside it can be told apart from focus leaving. */
+  const cardRef = useRef<HTMLDivElement | null>(null)
 
   // ── viewport ──────────────────────────────────────────────────────────────
   // The float is positioned in viewport pixels, so a resize has to re-clamp it:
@@ -262,18 +264,26 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
   }, [])
 
   // ── hover ─────────────────────────────────────────────────────────────────
-  // Hover opens the card after a beat; leaving closes it. The delay keeps the
-  // card from flickering while the pointer crosses the whale.
+  // Two hoverable pieces, one timer. Both the whale and the card must call
+  // `openSoon` on enter — not just the whale — because crossing the 10 px gap
+  // between them fires a `pointerleave` on the whale, and without a matching
+  // enter on the card that leave's close timer is never cancelled. That is
+  // what used to shut the card down while the pointer was on its way to (or
+  // resting on) the switch.
   const hoverTimer = useRef<number | undefined>(undefined)
 
   const openSoon = useCallback(() => {
     if (hoverTimer.current !== undefined) window.clearTimeout(hoverTimer.current)
-    hoverTimer.current = window.setTimeout(() => setOpen(true), 220)
+    // Short enough to feel immediate, long enough that merely passing over the
+    // whale does not pop the card open.
+    hoverTimer.current = window.setTimeout(() => setOpen(true), 140)
   }, [])
 
   const closeSoon = useCallback(() => {
     if (hoverTimer.current !== undefined) window.clearTimeout(hoverTimer.current)
-    hoverTimer.current = window.setTimeout(() => setOpen(false), 260)
+    // Forgiving on purpose: the pointer may cross the gap to the card slowly,
+    // and the card's own enter cancels this anyway.
+    hoverTimer.current = window.setTimeout(() => setOpen(false), 320)
   }, [])
 
   useEffect(() => () => {
@@ -340,16 +350,15 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
       data-mf-side={cardSide}
       data-mf-vertical={cardVertical}
     >
-      <div
-        className={`mf-card-shell ${open ? 'is-open' : ''}`}
-        onPointerEnter={openSoon}
-        onPointerLeave={closeSoon}
-      >
+      <div className={`mf-card-shell ${open ? 'is-open' : ''}`}>
         <div
           className="mf-card"
+          ref={cardRef}
           role="dialog"
           aria-label={t('card.title')}
           aria-hidden={!open}
+          onPointerEnter={openSoon}
+          onPointerLeave={closeSoon}
         >
           <header className="mf-card-head">
             <div className="mf-card-head-text">
@@ -446,10 +455,16 @@ export function ModelFloatPanel(props: PanelProps): React.ReactElement {
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
-          onMouseEnter={openSoon}
-          onMouseLeave={closeSoon}
+          onPointerEnter={openSoon}
+          onPointerLeave={closeSoon}
           onFocus={openSoon}
-          onBlur={closeSoon}
+          onBlur={event => {
+            // Focus moving into the card — onto the switch, say — is still
+            // inside the float, so it must not close it.
+            const next = event.relatedTarget
+            if (next instanceof Node && cardRef.current?.contains(next) === true) return
+            closeSoon()
+          }}
           onClick={event => event.preventDefault()}
           aria-label={t('float.label')}
           aria-expanded={open}
