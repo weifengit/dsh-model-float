@@ -126,6 +126,69 @@ console.log('the ring')
   check('clicking runs the action', ring.includes('onClick='))
 }
 
+// A corner cuts the ring to a *quarter* of an annulus whose two ends must be
+// closed by radial edges. This is exactly the piece of maths a screenshot
+// caught and a string check cannot: run the real geometry module and look at
+// the corners it produces.
+console.log('ring geometry')
+const geometrySource = readFileSync(join(root, 'client', 'src', 'ring', 'geometry.ts'), 'utf8')
+const geometryModule = await transform(geometrySource, { loader: 'ts', format: 'esm' })
+const shapes = await import(`data:text/javascript;base64,${Buffer.from(geometryModule.code).toString('base64')}`)
+
+/** The points a band path visits, parsed out of its `M`, `L` and `A` commands. */
+const pointsOf = (path) => {
+  const tokens = path.split(' ')
+  const points = []
+  for (let index = 0; index < tokens.length;) {
+    if (tokens[index] === 'M') {
+      points.push([Number(tokens[index + 1]), Number(tokens[index + 2])])
+      index += 3
+    } else if (tokens[index] === 'A') {
+      points.push([Number(tokens[index + 6]), Number(tokens[index + 7])])
+      index += 8
+    } else if (tokens[index] === 'L') {
+      points.push([Number(tokens[index + 1]), Number(tokens[index + 2])])
+      index += 3
+    } else {
+      index += 1
+    }
+  }
+  return points
+}
+
+/** Whether two points lie on the same ray out of the centre. */
+const sameRay = (a, b) => {
+  const delta = Math.abs(shapes.angleOf(a[0], a[1]) - shapes.angleOf(b[0], b[1])) % (Math.PI * 2)
+  return Math.min(delta, Math.PI * 2 - delta) < 1e-3
+}
+
+for (const horizontal of ['left', 'right', 'none']) {
+  for (const vertical of ['top', 'bottom', 'none']) {
+    if (horizontal === 'none' && vertical === 'none') continue
+    const label = `${horizontal}/${vertical}`
+    const points = pointsOf(shapes.arcPath(horizontal, vertical))
+    // Both ends are radial: the inner arc finishes on the ray the outer arc
+    // started from. Either being off means the inner edge ran the wrong way
+    // round and the band closes across the whale as a crescent.
+    check(`${label}: the band closes on its own rays`,
+      sameRay(points[0], points[points.length - 1]) && sameRay(points[1], points[2]))
+    check(`${label}: the band visits only its two radii`,
+      points.every(point => {
+        const radius = Math.hypot(point[0], point[1])
+        return Math.abs(radius - shapes.INNER_RADIUS) < 0.02 || Math.abs(radius - shapes.OUTER_RADIUS) < 0.02
+      }))
+    // One subpath, or the fill is a pair of crescents rather than an annulus.
+    check(`${label}: the band is a single subpath`, (shapes.arcPath(horizontal, vertical).match(/M/g) ?? []).length === 1)
+  }
+}
+
+// A quarter is four corners 90° apart, not a crescent that reaches under the
+// whale.
+const quarter = pointsOf(shapes.arcPath('left', 'top'))
+check('a quarter band is four corners', quarter.length === 4)
+check('a quarter band spans 90°',
+  Math.abs(Math.abs(shapes.angleOf(quarter[1][0], quarter[1][1]) - shapes.angleOf(quarter[0][0], quarter[0][1])) - Math.PI / 2) < 1e-3)
+
 console.log('the lock screen')
 {
   const lock = readFileSync(join(root, 'client', 'src', 'features', 'lockscreen', 'lock-screen.tsx'), 'utf8')

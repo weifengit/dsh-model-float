@@ -23,7 +23,8 @@
  * square, so its corners sit 27·√2 ≈ 38 px from the centre. It is also the
  * inner edge of the band that carries the icons and their names, so it sits
  * well outside the mark: a ring hugging the whale has no room for text.
-export const INNER_RADIUS = 52
+ */
+export const INNER_RADIUS = 50
 
 /**
  * The ring's outer radius, in px.
@@ -32,13 +33,27 @@ export const INNER_RADIUS = 52
  * those two rows plus their padding — {@link INNER_RADIUS} keeps the inner
  * edge clear of the whale, this keeps the outer edge clear of the labels.
  */
-export const OUTER_RADIUS = 106
+export const OUTER_RADIUS = 112
 
-/** The distance from the centre to an action's icon, in px. */
-export const ICON_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 - 11
+/**
+ * The distance from the centre to an action's icon, in px.
+ *
+ * The icon sits in the inner half of the band, its name in the outer half:
+ * 18 px of glyph plus a line of text do not fit side by side in a 30° wedge,
+ * but they fit one above the other. The gap between the two radii is what
+ * keeps them apart on a wedge that points sideways, where "above" and
+ * "further out" are the same direction.
+ */
+export const ICON_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 - 20
 
-/** The distance from the centre to an action's label, in px. */
-export const LABEL_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 + 13
+/**
+ * The distance from the centre to an action's label, in px.
+ *
+ * Kept close to the middle: a four-character name is ~40 px wide, and the
+ * corners of that box are the first thing to poke out through the outer edge
+ * on a wedge that points at a diagonal.
+ */
+export const LABEL_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 + 11
 
 /**
  * The radius the pointer is measured from, in px.
@@ -290,18 +305,25 @@ export function arcPath(
     Math.sin(angle) * radius,
     -Math.cos(angle) * radius,
   ]
-  const outerRing = sectorArc(outer, start, span, true, point)
-  // The inner edge runs *back* along the same angles. Adding the sweep
-  // instead of subtracting it ends a quarter half a turn too far round, and
-  // the closing edge fills the gap between the whale and the band as a grey
-  // crescent. A half ring hid the mistake: 180° lands on the same point going
-  // either way.
-  const innerRing = sectorArc(inner, start + span, span, false, point, -1)
-  return [outerRing, innerRing, 'Z'].join(' ')
+  // One subpath, not two: the outer edge, a radial line in to the inner edge,
+  // then the inner edge back along the same angles. Emitting the inner edge as
+  // its own `M` subpath leaves the outer one to be closed by a straight chord
+  // instead of a radial edge, and what that fills is not an annulus but a pair
+  // of crescents — the inner one is the grey crescent under the whale. The
+  // inner arc also has to run *back*: adding the sweep ends a quarter half a
+  // turn too far round. A half ring hid both, because its chord is a diameter
+  // and 180° lands on the same point going either way.
+  return [
+    `M ${point(outer, start).map(n => n.toFixed(2)).join(' ')}`,
+    radiusArcs(outer, start, span, true, point),
+    `L ${point(inner, start + span).map(n => n.toFixed(2)).join(' ')}`,
+    radiusArcs(inner, start + span, span, false, point, -1),
+    'Z',
+  ].join(' ')
 }
 
 /**
- * One radius of an annular sector, as a sequence of arcs.
+ * The arc commands for one radius of an annular sector.
  *
  * @param radius - the radius to draw at.
  * @param from - the starting angle.
@@ -309,9 +331,9 @@ export function arcPath(
  * @param clockwise - which way round.
  * @param point - maps an angle to a coordinate.
  * @param direction - 1 draws forward from `from`, -1 draws back.
- * @returns the path data.
+ * @returns the `A` commands, without a leading `M`.
  */
-function sectorArc(
+function radiusArcs(
   radius: number,
   from: number,
   sweep: number,
@@ -319,7 +341,7 @@ function sectorArc(
   point: (radius: number, angle: number) => [number, number],
   direction: 1 | -1 = 1,
 ): string {
-  const parts = [`M ${point(radius, from).map(n => n.toFixed(2)).join(' ')}`]
+  const parts: string[] = []
   let angle = from
   // A full circle cannot be one arc: its endpoints coincide, and an SVG arc
   // with identical endpoints draws nothing at all. Two half turns are the

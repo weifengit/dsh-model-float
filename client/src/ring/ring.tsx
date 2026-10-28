@@ -141,9 +141,9 @@ export function Ring(props: RingProps): React.ReactElement | null {
             />
             <g
               className={`mf-ring-glyph ${active ? 'is-active' : ''}`}
-              transform={`translate(${wedge.iconX - 10} ${wedge.iconY - 10})`}
+              transform={`translate(${wedge.iconX - 9} ${wedge.iconY - 9})`}
             >
-              <RingIcon name={action.icon} size={20} />
+              <RingIcon name={action.icon} size={18} />
             </g>
             {/* The name sits on the outer track, under its icon. Horizontal
                 and small on purpose: a quarter ring is cut to three 30°

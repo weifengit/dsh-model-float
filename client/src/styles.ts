@@ -440,7 +440,9 @@ export const CSS = `
 }
 .mf-ring-wedge:hover,
 .mf-ring-wedge.is-active {
-  fill: color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 30%, transparent);
+  /* A wash of the brand colour over the glass, not a second surface: the
+     wedge is still part of the ring, it is just the part being pointed at. */
+  fill: color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 22%, transparent);
 }
 .mf-ring-wedge.is-disabled { cursor: default; opacity: 0.35; }
 
@@ -464,9 +466,9 @@ export const CSS = `
    wrapped text would not fit at all. */
 .mf-ring-label {
   fill: var(--dsw-alias-label-primary, #f9fafb);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 500;
-  letter-spacing: 0.2px;
+  letter-spacing: 0;
   text-anchor: middle;
   opacity: 0.78;
   pointer-events: none;
