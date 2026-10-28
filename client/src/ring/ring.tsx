@@ -121,6 +121,7 @@ export function Ring(props: RingProps): React.ReactElement | null {
           part of the ring rather than as a hole. */}
       <path className="mf-ring-band" d={band} />
       <path className="mf-ring-rim" d={rim} />
+      <path className="mf-ring-inner" d={arcRimPath(horizontal, vertical, INNER_RADIUS)} />
       {wedges.map(wedge => {
         const action = actions.find(candidate => candidate.id === wedge.id)
         if (action === undefined) return null
@@ -140,10 +141,21 @@ export function Ring(props: RingProps): React.ReactElement | null {
             />
             <g
               className={`mf-ring-glyph ${active ? 'is-active' : ''}`}
-              transform={`translate(${wedge.x - 9} ${wedge.y - 9})`}
+              transform={`translate(${wedge.iconX - 10} ${wedge.iconY - 10})`}
             >
-              <RingIcon name={action.icon} size={18} />
+              <RingIcon name={action.icon} size={20} />
             </g>
+            {/* The name sits on the outer track, under its icon. Horizontal
+                and small on purpose: a quarter ring is cut to three 30°
+                wedges, and rotated or wrapped text would not fit at all. */}
+            <text
+              className={`mf-ring-label ${active ? 'is-active' : ''}`}
+              x={wedge.labelX}
+              y={wedge.labelY}
+              dy="0.34em"
+            >
+              {action.label}
+            </text>
             <title>{action.label}</title>
           </g>
         )

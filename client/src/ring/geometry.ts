@@ -19,31 +19,41 @@
 
 /**
  * The ring's inner radius, in px.
- *
- * Must clear the whale's *corners*, not its edge: the seat is a 54 px square,
- * so its corners sit 27·√2 ≈ 38 px from the centre. An inner radius below that
- * lets the ring's inner edge cut across the whale, and the band shows through
- * the gaps in the mark as a grey crescent.
- */
-export const INNER_RADIUS = 40
+ * It must clear the whale's *corners*, not its edge: the seat is a 54 px
+ * square, so its corners sit 27·√2 ≈ 38 px from the centre. It is also the
+ * inner edge of the band that carries the icons and their names, so it sits
+ * well outside the mark: a ring hugging the whale has no room for text.
+export const INNER_RADIUS = 52
 
-/** The ring's outer radius, in px. */
-export const OUTER_RADIUS = 66
+/**
+ * The ring's outer radius, in px.
+ *
+ * The band is what carries an action's icon *and* its name, so its width is
+ * those two rows plus their padding — {@link INNER_RADIUS} keeps the inner
+ * edge clear of the whale, this keeps the outer edge clear of the labels.
+ */
+export const OUTER_RADIUS = 106
+
+/** The distance from the centre to an action's icon, in px. */
+export const ICON_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 - 11
+
+/** The distance from the centre to an action's label, in px. */
+export const LABEL_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 + 13
 
 /**
  * The radius the pointer is measured from, in px.
  *
- * Deliberately smaller than {@link INNER_RADIUS}: the drawn ring starts at
- * 40 px so it clears the whale, but if the *hit* area started there too, the
- * few px between the whale's edge and the band would be dead space. Moving
- * the pointer off the whale would cross that gap, land on nothing, and the
- * ring would close before it could be reached — which is why the lock-screen
- * wedge in a half ring was so hard to hit.
+ * Deliberately smaller than {@link INNER_RADIUS}: the drawn ring starts well
+ * outside the whale, but if the *hit* area started there too, the gap between
+ * the mark and the band would be dead space. Moving the pointer off the whale
+ * would cross that gap, land on nothing, and the ring would close before it
+ * could be reached — which is why the lock-screen wedge in a half ring was so
+ * hard to hit.
  */
-export const HIT_INNER_RADIUS = 22
+export const HIT_INNER_RADIUS = 26
 
 /** How far past the rim the pointer still counts as on the ring, in px. */
-export const HIT_OUTER_SLACK = 6
+export const HIT_OUTER_SLACK = 8
 
 /**
  * The four edges a float can be parked against.
@@ -74,11 +84,12 @@ export interface Wedge {
   readonly end: number
   /** The angle of the wedge's middle, in radians. */
   readonly middle: number
-  /** The wedge's middle point, in px, relative to the ring's centre. */
-  readonly x: number
-  readonly y: number
-  /** The distance from the centre to the wedge's middle, in px. */
-  readonly radius: number
+  /** The icon's centre, in px, relative to the ring's centre. */
+  readonly iconX: number
+  readonly iconY: number
+  /** The label's centre, in px, relative to the ring's centre. */
+  readonly labelX: number
+  readonly labelY: number
 }
 
 /**
@@ -170,21 +181,23 @@ export function layoutWedges(
   const count = ids.length
   if (count === 0) return []
   const step = span / count
-  const radius = (INNER_RADIUS + OUTER_RADIUS) / 2
   return ids.map((id, index) => {
     const from = start + step * index
     const to = from + step
     const middle = (from + to) / 2
+    // Angles run clockwise from 12 o'clock, so x grows with the sine and y
+    // with the cosine. The icon and its label sit on two radii — the icon
+    // inward, the label outward — so a wedge reads as a glyph above a name
+    // instead of two things fighting over the same point.
     return {
       id,
       start: from,
       end: to,
       middle,
-      // Angles run clockwise from 12 o'clock, so x grows with the sine and y
-      // with the cosine.
-      x: Math.sin(middle) * radius,
-      y: -Math.cos(middle) * radius,
-      radius,
+      iconX: Math.sin(middle) * ICON_RADIUS,
+      iconY: -Math.cos(middle) * ICON_RADIUS,
+      labelX: Math.sin(middle) * LABEL_RADIUS,
+      labelY: -Math.cos(middle) * LABEL_RADIUS,
     }
   })
 }
@@ -278,7 +291,12 @@ export function arcPath(
     -Math.cos(angle) * radius,
   ]
   const outerRing = sectorArc(outer, start, span, true, point)
-  const innerRing = sectorArc(inner, start + span, span, false, point)
+  // The inner edge runs *back* along the same angles. Adding the sweep
+  // instead of subtracting it ends a quarter half a turn too far round, and
+  // the closing edge fills the gap between the whale and the band as a grey
+  // crescent. A half ring hid the mistake: 180° lands on the same point going
+  // either way.
+  const innerRing = sectorArc(inner, start + span, span, false, point, -1)
   return [outerRing, innerRing, 'Z'].join(' ')
 }
 
@@ -290,6 +308,7 @@ export function arcPath(
  * @param sweep - how far the arc runs.
  * @param clockwise - which way round.
  * @param point - maps an angle to a coordinate.
+ * @param direction - 1 draws forward from `from`, -1 draws back.
  * @returns the path data.
  */
 function sectorArc(
@@ -298,6 +317,7 @@ function sectorArc(
   sweep: number,
   clockwise: boolean,
   point: (radius: number, angle: number) => [number, number],
+  direction: 1 | -1 = 1,
 ): string {
   const parts = [`M ${point(radius, from).map(n => n.toFixed(2)).join(' ')}`]
   let angle = from
@@ -305,9 +325,9 @@ function sectorArc(
   // with identical endpoints draws nothing at all. Two half turns are the
   // usual way round it.
   for (const each of (sweep >= Math.PI * 2 - 1e-6 ? [Math.PI, Math.PI] : [sweep])) {
-    const [x, y] = point(radius, angle + each)
+    const [x, y] = point(radius, angle + each * direction)
     parts.push(`A ${radius} ${radius} 0 ${each > Math.PI ? 1 : 0} ${clockwise ? 1 : 0} ${x.toFixed(2)} ${y.toFixed(2)}`)
-    angle += each
+    angle += each * direction
   }
   return parts.join(' ')
 }

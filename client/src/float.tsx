@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Ring } from './ring/ring.tsx'
 import { WhaleMark } from './whale.tsx'
+import { OUTER_RADIUS } from './ring/geometry.ts'
 import { VendorCard } from './features/free-model/vendor-card.tsx'
 import { LockScreen } from './features/lockscreen/lock-screen.tsx'
 import { ACTIONS } from './features/registry.ts'
@@ -256,20 +257,20 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
   // ── placement ─────────────────────────────────────────────────────────────
   // The ring is cut by the viewport edge, so it needs to know which edges cut
   // it. The test is on the *ring's* extent, not the whale's: the ring is
-  // 132 px across while the whale is 54, so a float parked 20 px from the
-  // bottom already has a third of its ring off-screen — and those wedges are
+  // more than a hundred px from the centre while the whale is 54 across, so a
+  // float parked a short way from the bottom already has part of its ring
   // unreachable, so the actions have to be laid out along what is left.
   const edges = useMemo(() => {
     // The ring is centred on the whale's centre.
     const centreX = placement.x + WHALE_SEAT / 2
     const centreY = placement.y + WHALE_SEAT / 2
     return {
-      horizontal: centreX - RING_OUTER <= 0
+      horizontal: centreX - OUTER_RADIUS <= 0
         ? 'left' as const
-        : centreX + RING_OUTER >= viewport.width ? 'right' as const : 'none' as const,
-      vertical: centreY - RING_OUTER <= 0
+        : centreX + OUTER_RADIUS >= viewport.width ? 'right' as const : 'none' as const,
+      vertical: centreY - OUTER_RADIUS <= 0
         ? 'top' as const
-        : centreY + RING_OUTER >= viewport.height ? 'bottom' as const : 'none' as const,
+        : centreY + OUTER_RADIUS >= viewport.height ? 'bottom' as const : 'none' as const,
     }
   }, [placement.x, placement.y, viewport.width, viewport.height])
 
@@ -365,9 +366,6 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
 
 /** The whale seat's edge in px — the same as the reference music ball. */
 const WHALE_SEAT = 54
-
-/** The ring's outer radius in px — how far the ring reaches past the whale. */
-const RING_OUTER = 66
 
 /** The whale's rendered width in px. */
 const WHALE_WIDTH = 54

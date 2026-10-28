@@ -410,19 +410,23 @@ export const CSS = `
 }
 
 .mf-ring-band {
-  /* A deep glass with a trace of the brand blue, rather than flat grey: the
-     ring is the whale's own furniture and should read as the same material. */
-  fill: color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 12%, rgba(19, 21, 32, 0.72));
+  /* The surface the dialog and the card are drawn on, held back to a
+     translucent pane so whatever sits behind the float reads through the
+     ring — the ring is a menu over the app, not a hole cut in it. */
+  fill: color-mix(in srgb, var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.94)) 84%, transparent);
   /* No stroke: the band is a closed path, so stroking it would also draw its
      two radial edges — the straight seam that appeared above the whale. */
   stroke: none;
-  filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.46));
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.3));
 }
 
-/* The outline, as an open arc: an edge without the radial seams. */
-.mf-ring-rim {
+/* The ring's edge, inner and outer, as open arcs: a border without the
+   radial seams. A translucent pane with only its outer edge stroked reads
+   as a puddle rather than as a ring, so both radii are drawn. */
+.mf-ring-rim,
+.mf-ring-inner {
   fill: none;
-  stroke: color-mix(in srgb, #ffffff 24%, transparent);
+  stroke: var(--dsw-alias-border-l3, rgba(255, 255, 255, 0.16));
   stroke-width: 1;
   pointer-events: none;
 }
@@ -454,6 +458,22 @@ export const CSS = `
   stroke: #fff;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 90%, transparent));
 }
+
+/* The action's name, on the outer track under its icon. It stays horizontal
+   and small: the quarter ring is cut to three 30° wedges, where rotated or
+   wrapped text would not fit at all. */
+.mf-ring-label {
+  fill: var(--dsw-alias-label-primary, #f9fafb);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  text-anchor: middle;
+  opacity: 0.78;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 120ms ease;
+}
+.mf-ring-label.is-active { opacity: 1; }
 
 /* ── the lock screen ─────────────────────────────────────────────────────── */
 
