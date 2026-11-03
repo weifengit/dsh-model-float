@@ -29,6 +29,9 @@
  * @module client/src/data.ts
  */
 
+/** The verdict shape the Host's availability cache stores. */
+import type { CachedProbe } from './verdicts.ts'
+
 /** The Our Free Model plugin's own JSON API prefix, served by the same host. */
 export const OFM_API = '/api/our-free-model'
 
@@ -144,13 +147,22 @@ export interface LaneSummary {
   readonly probedAt: number
 }
 
-/** One model's availability, as reported by the probe. */
+/**
+ * One model's availability, as reported by the probe.
+ *
+ * `hiddenByUser` is what the sweep skips: a model already out of the picker
+ * needs no verdict, and asking for one would spend a request on a question
+ * the user has already answered.
+ */
 export interface ModelRow {
   readonly id: string
   readonly name: string
   readonly availability: string
   readonly detail: string
   readonly route: string
+  readonly availabilitySource: string
+  readonly probedAt: number
+  readonly hiddenByUser: boolean
 }
 
 /** One model of a vendor, as the Channel Pack reports it. */
@@ -286,7 +298,10 @@ interface RawSummary {
     id?: string
     name?: string
     availability?: string
+    availabilitySource?: string
     detail?: string
+    probedAt?: number
+    hiddenByUser?: boolean
     route?: string
   }>
   probedAt?: number
@@ -350,6 +365,9 @@ async function readLane(signal?: AbortSignal): Promise<{
       availability: String(entry.availability ?? 'unknown'),
       detail: String(entry.detail ?? ''),
       route: String(entry.route ?? ''),
+      availabilitySource: String(entry.availabilitySource ?? ''),
+      probedAt: Number(entry.probedAt ?? 0),
+      hiddenByUser: entry.hiddenByUser === true,
     }))
     const counts = { available: 0, regionBlocked: 0, unavailable: 0, throttled: 0, unknown: 0 }
     for (const entry of models) {
@@ -563,6 +581,9 @@ export async function setVendorModelsDisabled(
 /** The Host route serving the master switch's durable state. */
 export const SWITCH_API = '/api/model-float/switch'
 
+/** The Host route serving the per-model availability cache. */
+export const AVAILABILITY_API = '/api/model-float/availability'
+
 /** The persisted state of the master switch. */
 export interface SwitchState {
   /** Whether the switch is on: unusable vendors' models are hidden. */
@@ -620,4 +641,53 @@ function numeric(value: unknown): number | null {
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+/**
+ * Read the per-model availability cache from the Host.
+ *
+ * The cache is this plugin's own probes — a verdict the card paid for with a
+ * real request, which a reload must not make it pay for twice.
+ */
+export async function readAvailabilityCache(signal?: AbortSignal): Promise<Record<string, CachedProbe>> {
+  try {
+    const response = await fetch(AVAILABILITY_API, {
+      headers: { accept: 'application/json' },
+      ...(signal === undefined ? {} : { signal }),
+    })
+    if (!response.ok) return {}
+    const payload = await response.json() as { results?: Record<string, Partial<CachedProbe>> }
+    const cache: Record<string, CachedProbe> = {}
+    for (const [id, row] of Object.entries(payload.results ?? {})) {
+      if (typeof row?.state !== 'string') continue
+      cache[id] = {
+        state: row.state as CachedProbe['state'],
+        detail: typeof row.detail === 'string' ? row.detail : '',
+        at: Number.isFinite(row.at) ? Number(row.at) : 0,
+      }
+    }
+    return cache
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Record probe results on the Host, and return the whole cache as it now reads.
+ *
+ * The answer is the merged table rather than an echo: two sweeps finishing in
+ * the same minute each see the other's verdicts, so neither writes the other
+ * out.
+ */
+export async function writeAvailabilityCache(
+  results: Readonly<Record<string, { state: string, detail?: string, at?: number }>>,
+): Promise<Record<string, CachedProbe>> {
+  const response = await fetch(AVAILABILITY_API, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ results }),
+  })
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim())
+  const payload = await response.json() as { results?: Record<string, CachedProbe> }
+  return payload.results ?? {}
 }

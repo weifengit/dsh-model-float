@@ -7,18 +7,19 @@
  * module owns the table.
  *
  * Each row carries the vendor's own accent colour, its connection state, and
- * its remaining balance in the vendor's own unit. Vendors that are switched
- * off, not logged in, or out of credit are all visible — the point of the card
- * is to answer "which vendors are usable right now" at a glance, so a row that
- * is *not* usable must be as legible as one that is.
+ * its remaining balance in the vendor's own unit. The per-model list at the
+ * bottom shows only what a verdict says can answer a turn: a refusal is not
+ * listed, and an unknown is one probe away from being answered — the sweep
+ * button spends that probe.
  *
  * @module client/src/features/free-model/vendor-card.tsx
  */
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { isUnusable } from './data.ts'
-import type { VendorRow, ModelRow } from './data.ts'
+import type { ModelRow, VendorRow } from './data.ts'
 import type { FreeModelState } from './use-free-model.ts'
+import type { Verdict } from './verdicts.ts'
 
 /** The props the vendor card needs. */
 export interface VendorCardProps {
@@ -38,12 +39,6 @@ export interface VendorCardProps {
   readonly t: (key: string, vars?: Record<string, string | number>) => string
 }
 
-
-/**
- * The floating panel.
- *
- * @param props - see {@link PanelProps}.
- */
 /**
  * The vendor card.
  *
@@ -51,7 +46,10 @@ export interface VendorCardProps {
  */
 export function VendorCard(props: VendorCardProps): React.ReactElement {
   const { open, side, vertical, freeModel, onOpen, onClose, t } = props
-  const { snapshot, loading, error, refresh, switchOn, hiddenVendors, switchPending, setSwitch } = freeModel
+  const {
+    snapshot, loading, error, refresh, switchOn, hiddenVendors, switchPending, setSwitch,
+    verdicts, sweeping, sweepProgress, sweepError, runSweep, stopSweep,
+  } = freeModel
   const [expanded, setExpanded] = useState(false)
   const cardRef = useRef<HTMLDivElement | null>(null)
 
@@ -69,6 +67,27 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
   const listed = switchOn
     ? vendors.filter(row => !hiddenVendors.includes(row.vendor.id))
     : vendors
+
+  // Lane models the picker still lists and no verdict has answered: what the
+  // sweep button would go and ask about.
+  const laneUnknown = (snapshot?.models ?? []).filter(model =>
+    !model.hiddenByUser && (verdicts[model.id]?.state ?? 'unknown') === 'unknown').length
+  // How many lane models a verdict says can answer — the honest number beside
+  // the lane's own count, which credits a listing as if it were an answer.
+  const usableLane = (snapshot?.models ?? []).filter(model =>
+    !model.hiddenByUser && (verdicts[model.id]?.state ?? 'unknown') === 'available').length
+  // Per vendor: how many of its `provider/model` verdicts came back positive.
+  const usableByVendor = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const [key, verdict] of Object.entries(verdicts)) {
+      if (verdict.state !== 'available') continue
+      const slash = key.indexOf('/')
+      if (slash <= 0) continue
+      const provider = key.slice(0, slash)
+      counts[provider] = (counts[provider] ?? 0) + 1
+    }
+    return counts
+  }, [verdicts])
 
   // Escape closes the card, so a keyboard user is never trapped in it.
   useEffect(() => {
@@ -105,7 +124,7 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
                   usable,
                   vendors: vendors.length,
                   credit: withCredit,
-                  models: lane.available,
+                  models: usableLane,
                   total: lane.total,
                 })}
             </span>
@@ -156,7 +175,12 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
 
         <div className="mf-vendor-list">
           {listed.map(row => (
-            <VendorRowView key={row.vendor.id} row={row} t={t} />
+            <VendorRowView
+              key={row.vendor.id}
+              row={row}
+              usable={usableByVendor[row.vendor.id] ?? 0}
+              t={t}
+            />
           ))}
         </div>
 
@@ -169,13 +193,29 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
           >
             {expanded ? t('card.hideModels') : t('card.showModels')}
           </button>
+          {laneUnknown > 0 || sweeping ? (
+            <button
+              type="button"
+              className="mf-text-btn mf-sweep-btn"
+              onClick={() => { if (sweeping) { stopSweep() } else { void runSweep() } }}
+              title={sweeping ? t('sweep.stop') : t('sweep.start', { count: laneUnknown })}
+            >
+              {sweeping
+                ? t('sweep.running', { done: sweepProgress.done, total: sweepProgress.total })
+                : t('sweep.start', { count: laneUnknown })}
+            </button>
+          ) : null}
           <span className="mf-foot-time">
             {snapshot === null ? '' : t('card.updated', { time: formatTime(snapshot.at) })}
           </span>
         </footer>
 
+        {sweepError !== '' ? (
+          <p className="mf-note">{t('sweep.' + sweepError)}</p>
+        ) : null}
+
         {expanded ? (
-          <ModelList models={snapshot?.models ?? []} t={t} />
+          <ModelList models={snapshot?.models ?? []} verdicts={verdicts} t={t} />
         ) : null}
       </div>
     </div>
@@ -183,7 +223,11 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
 }
 
 /** One vendor row of the card. */
-function VendorRowView({ row, t }: { row: VendorRow, t: VendorCardProps['t'] }): React.ReactElement {
+function VendorRowView({ row, usable, t }: {
+  row: VendorRow
+  usable: number
+  t: VendorCardProps['t']
+}): React.ReactElement {
   const state = stateOf(row)
   const balanceText = balanceTextOf(row, t)
   // A vendor whose models are all hidden is one the picker no longer lists.
@@ -200,7 +244,7 @@ function VendorRowView({ row, t }: { row: VendorRow, t: VendorCardProps['t'] }):
             <span className="mf-vendor-models">
               {allHidden
                 ? t('vendor.modelsHidden', { count: row.modelCount })
-                : t('vendor.modelsVisible', { visible: row.visibleModelCount, total: row.modelCount })}
+                : t('vendor.modelsUsable', { usable, visible: row.visibleModelCount, total: row.modelCount })}
             </span>
           ) : null}
         </span>
@@ -213,24 +257,53 @@ function VendorRowView({ row, t }: { row: VendorRow, t: VendorCardProps['t'] }):
   )
 }
 
-/** The per-model list, shown when the user expands the card. */
-function ModelList({ models, t }: { models: readonly ModelRow[], t: VendorCardProps['t'] }): React.ReactElement {
-  if (models.length === 0) {
+/**
+ * The per-model list, shown when the user expands the card.
+ *
+ * A refusal is dropped — the user asked not to see what cannot answer a turn —
+ * and an unknown is kept but labelled as untested, because it is one probe
+ * away from an answer and hiding it would make the sweep button a lie.
+ */
+function ModelList({ models, verdicts, t }: {
+  models: readonly ModelRow[]
+  verdicts: Readonly<Record<string, Verdict>>
+  t: VendorCardProps['t']
+}): React.ReactElement {
+  const shown = models
+    .filter(model => !model.hiddenByUser)
+    .map(model => ({ model, verdict: verdicts[model.id] }))
+    .filter(entry => entry.verdict === undefined || !isRefusedOrHidden(entry.verdict))
+    .sort((a, b) => rank(a.verdict) - rank(b.verdict))
+  if (shown.length === 0) {
     return <p className="mf-empty">{t('card.noModels')}</p>
   }
   return (
     <div className="mf-model-list">
-      {models.map(model => (
-        <div key={model.id} className={`mf-model is-${model.availability}`}>
-          <span className="mf-model-name" title={model.id}>{model.name}</span>
-          <span className="mf-model-state">{availabilityLabel(model.availability, t)}</span>
-          {model.detail !== '' ? (
-            <span className="mf-model-detail" title={model.detail}>{model.detail}</span>
-          ) : null}
-        </div>
-      ))}
+      {shown.map(({ model, verdict }) => {
+        const state = verdict?.state ?? 'unknown'
+        return (
+          <div key={model.id} className={`mf-model is-${state}`}>
+            <span className="mf-model-name" title={model.id}>{model.name}</span>
+            <span className="mf-model-state">{availabilityLabel(state, t)}</span>
+            {verdict !== undefined && verdict.detail !== '' ? (
+              <span className="mf-model-detail" title={verdict.detail}>{verdict.detail}</span>
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
+}
+
+/** A refused verdict hides the model; `no-credential` hides it too. */
+function isRefusedOrHidden(verdict: Verdict): boolean {
+  return verdict.state !== 'available' && verdict.state !== 'unknown'
+}
+
+/** Usable first, untested last. */
+function rank(verdict: Verdict | undefined): number {
+  if (verdict === undefined || verdict.state === 'unknown') return 2
+  return verdict.state === 'available' ? 0 : 1
 }
 
 /** The states a vendor row can be in, collapsed from {@link VendorRow}. */
@@ -261,13 +334,15 @@ function stateLabel(state: RowState, t: VendorCardProps['t']): string {
 }
 
 /** The label of a model's availability state. */
-function availabilityLabel(availability: string, t: VendorCardProps['t']): string {
-  switch (availability) {
+function availabilityLabel(state: string, t: VendorCardProps['t']): string {
+  switch (state) {
     case 'available': return t('model.available')
     case 'region-blocked': return t('model.regionBlocked')
     case 'unavailable': return t('model.unavailable')
     case 'throttled': return t('model.throttled')
-    default: return t('model.unknown')
+    case 'no-credit': return t('model.noCredit')
+    case 'no-credential': return t('model.noCredential')
+    default: return t('model.untested')
   }
 }
 

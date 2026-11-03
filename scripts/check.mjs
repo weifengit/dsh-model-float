@@ -5,7 +5,7 @@
 //   2. 产物的形状——dist/client.js 必须是 ModuleLoader 认得的 classic-script；
 //   3. 源码里没有语法上明显的问题（用 node 解析宿主半边）。
 import { readFileSync, existsSync } from 'node:fs'
-import { transform } from 'esbuild'
+import { transform, build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -189,6 +189,80 @@ check('a quarter band is four corners', quarter.length === 4)
 check('a quarter band spans 90°',
   Math.abs(Math.abs(shapes.angleOf(quarter[1][0], quarter[1][1]) - shapes.angleOf(quarter[0][0], quarter[0][1])) - Math.PI / 2) < 1e-3)
 
+// 可用性判定的真正回归：把纯逻辑模块（verdicts / sweep）用 esbuild 转译后
+// 直接跑起来，验证「受限不显示、未知要探测、厂商级故障只探一次」。
+console.log('per-model verdicts')
+async function loadModule(relative) {
+  // bundle: true —— sweep.ts 从 verdicts.ts 拿 probeKey，单文件 transform
+  // 不解析 import，data: URL 里相对路径也无处可寻。
+  const built = await build({
+    entryPoints: [join(root, relative)],
+    bundle: true, write: false, format: 'esm', platform: 'neutral',
+    absWorkingDir: root, logLevel: 'silent',
+  })
+  return import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`)
+}
+const V = await loadModule('client/src/features/free-model/verdicts.ts')
+const S = await loadModule('client/src/features/free-model/sweep.ts')
+{
+  // 受限 / 限流 / 不可用都是否定判定：不显示。
+  check('a refusal is a refusal', V.isRefused(V.laneVerdict({ availability: 'region-blocked', availabilitySource: 'probe' })))
+  check('a throttled verdict is a refusal', V.isRefused(V.laneVerdict({ availability: 'throttled', availabilitySource: 'probe' })))
+  check('an available verdict is usable', V.isUsable(V.laneVerdict({ availability: 'available', availabilitySource: 'manual' })))
+  // listing 不是答案：listing 来的 unknown 仍要探测。
+  const listed = V.laneVerdict({ availability: 'unknown', availabilitySource: 'listing' })
+  check('a listing is not an answer', V.needsProbe(listed))
+  check('a listing refusal still refuses', V.isRefused(V.laneVerdict({ availability: 'region-blocked', availabilitySource: 'listing' })))
+  // 网关拒绝文本到判定的映射——规则住在宿主半边（探测在宿主上跑，密钥不进页面）。
+  const G = await import('../src/gateway.js')
+  check('402 reads as no credit', G.classifyRefusal(402, 'insufficient balance (1008)') === 'no-credit')
+  check('missing credential reads as a vendor fault', G.classifyRefusal(502, '未配置凭据，请先登录') === 'no-credential')
+  check('a vendor fault is not a model fact', V.isVendorFault('no-credential') && !V.isVendorFault('unavailable'))
+  check('a 429 reads as throttled', G.classifyRefusal(429, 'Free usage limit reached') === 'throttled')
+  check('a 401 says nothing about the model', G.classifyRefusal(401, 'invalid api key') === 'unknown')
+  check('a 503 with the words does not ban a model', G.classifyRefusal(503, 'Service Unavailable') === 'unknown')
+  check('a stale refusal is still a refusal', V.isRefused({ state: 'no-credential', source: 'gateway-probe', detail: '', at: 0 }))
+  // 新鲜度：缓存里的判定过期后不再作数。
+  const now = 1_800_000_000_000
+  const fresh = V.cachedVerdict({ m: { state: 'available', detail: '', at: now - 1000 } }, 'm', now)
+  const stalePositive = V.cachedVerdict({ m: { state: 'available', detail: '', at: now - V.probeTtl('available') - 1 } }, 'm', now)
+  const oldRefusal = V.cachedVerdict({ m: { state: 'unavailable', detail: '', at: now - V.probeTtl('unavailable') + 1000 } }, 'm', now)
+  check('a fresh probe answers', fresh !== undefined && V.isUsable(fresh))
+  check('a stale positive expires', stalePositive === undefined)
+  check('a refusal is kept longer than a positive',
+    V.probeTtl('unavailable') > V.probeTtl('available') && oldRefusal !== undefined)
+}
+{
+  const now = 20_000_000
+  const lane = [
+    { id: 'ask-me', name: 'Ask', availability: 'unknown', availabilitySource: 'listing', detail: '', probedAt: 0, hiddenByUser: false },
+    { id: 'answered', name: 'Done', availability: 'available', availabilitySource: 'probe', detail: '', probedAt: now, hiddenByUser: false },
+    { id: 'hidden-one', name: 'Hidden', availability: 'unknown', availabilitySource: 'listing', detail: '', probedAt: 0, hiddenByUser: true },
+  ]
+  const vendorModels = {
+    trae: [
+      { id: 'glm', name: 'GLM', disabled: false, dead: false },
+      { id: 'off', name: 'Off', disabled: true, dead: false },
+      { id: 'gone', name: 'Gone', disabled: false, dead: true },
+    ],
+    deadbeat: [{ id: 'x', name: 'X', disabled: false, dead: false }],
+  }
+  // verdicts 是卡片折叠好的表：钩子里连 lane 的判定也在内。
+  const verdicts = {
+    answered: { state: 'available', source: 'lane-probe', detail: '', at: now },
+    'deadbeat/x': { state: 'no-credential', source: 'gateway-probe', detail: '', at: now },
+  }
+  const plan = S.planSweep(lane, vendorModels, {}, verdicts, now)
+  const keys = plan.map(target => target.key).sort()
+  check('the sweep asks the unknowns', keys.includes('ask-me') && keys.includes('trae/glm'))
+  check('the sweep skips what is answered', !keys.includes('answered'))
+  check('the sweep skips what the picker does not list', !keys.includes('hidden-one') && !keys.includes('trae/off') && !keys.includes('trae/gone'))
+  check('a vendor-level fault ends that vendor', !keys.some(key => key.startsWith('deadbeat/')))
+  check('a lane model is addressed through the gateway prefix',
+    S.gatewayModelId('ask-me', '') === 'our-free-model/ask-me' && S.gatewayModelId('trae/glm', 'trae') === 'trae/glm')
+}
+
+
 console.log('the lock screen')
 {
   const lock = readFileSync(join(root, 'client', 'src', 'features', 'lockscreen', 'lock-screen.tsx'), 'utf8')
@@ -251,6 +325,8 @@ console.log('host half')
     // models hidden with the switch reading "off".
     check('serves the switch state over a route', text.includes('API_PREFIX'))
     check('persists the state in a file', text.includes('JsonStore'))
+    // 探测结果也要落在 Host：一次探测花的是真实请求，刷新页面不该再花一次。
+    check('serves the availability cache over a route', text.includes("route === '/availability'"))
   }
   const store = join(root, 'src', 'store.js')
   if (!existsSync(store)) {
@@ -274,6 +350,18 @@ console.log('model hiding')
   check('keeps the switch state on the Host', data.includes('SWITCH_API'))
   check('reads the switch state from the Host', data.includes('readSwitch'))
   check('writes the switch state to the Host', data.includes('writeSwitch'))
+  // 逐模型判定：列表只显可用+未探测，受限/限流/无额度直接隐藏。
+  const cardSource = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'vendor-card.tsx'), 'utf8')
+  check('the model list filters by verdict', cardSource.includes('isRefusedOrHidden'))
+  check('the sweep is one click away', cardSource.includes('mf-sweep-btn'))
+  // 探测跑在宿主上：密钥从文件读，从不跨进页面。
+  const gatewaySource = readFileSync(join(root, 'src', 'gateway.js'), 'utf8')
+  check('the probe runs on the Host against the gateway', gatewaySource.includes('chat/completions'))
+  check('the page never sees the key', !readFileSync(join(root, 'client/src/features/free-model/probe.ts'), 'utf8').includes('api-key'))
+  check('the sweep routes are mounted on the Host', readFileSync(join(root, 'src', 'host.js'), 'utf8').includes("route === '/sweep'"))
+  const availability = readFileSync(join(root, 'src', 'availability.js'), 'utf8')
+  check('the availability cache is durable', availability.includes('JsonStore'))
+  check('an unknown verdict is never cached', availability.includes('VERDICT_STATES.has'))
 
   const entrySource = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
   const float = readFileSync(join(root, 'client', 'src', 'float.tsx'), 'utf8')

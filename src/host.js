@@ -4,8 +4,10 @@
  * Two jobs, both small:
  *
  * 1. own the master switch's durable state (a JSON file under the harness
- *    home) so the switch survives a DSH restart;
- * 2. serve that state over one same-origin JSON route the browser half reads
+ *    home) so the switch survives a DSH restart, and the same for the
+ *    per-model availability cache — a probe is spent once and must not be
+ *    paid for twice;
+ * 2. serve that state over same-origin JSON routes the browser half reads
  *    and writes.
  *
  * @module src/host.js
@@ -15,6 +17,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { JsonStore, INITIAL_STATE, STATE_FILE, DATA_DIR_NAME, normalizeState, resolveDshHome } from './store.js'
 import { sharedSampler, requestGarbageCollection } from './metrics.js'
+import { openAvailabilityStore, normalizeAvailability, mergeAvailability } from './availability.js'
+import { createProber } from './gateway.js'
 
 /** The plugin's name, as the harness knows it. */
 export const name = 'model-float'
@@ -61,8 +65,11 @@ export function apply(ctx, _config = {}) {
   const store = new JsonStore(path.join(dataDir, STATE_FILE), INITIAL_STATE, {
     log: message => logger.warn?.(`model-float: ${message}`),
   })
+  const availability = openAvailabilityStore({ logger })
+  // The sweep runs here: the gateway key stays in this process and the page
+  // only ever sees verdicts.
+  const prober = createProber({ store: availability, merge: mergeAvailability, logger })
   const sampler = sharedSampler()
-
   // The state is the durable part; the route is how the browser reaches it.
   const handler = async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
@@ -84,6 +91,27 @@ export function apply(ctx, _config = {}) {
       if (method === 'GET' && route === '/metrics') {
         // One sample per poll: the rate is the delta between two polls.
         return send(200, await sampler.sample())
+      }
+      if (method === 'GET' && route === '/availability') {
+        return send(200, normalizeAvailability(availability.get()))
+      }
+      if (method === 'POST' && route === '/availability') {
+        const body = await readJson(req)
+        return send(200, mergeAvailability(availability, body))
+      }
+      if (method === 'POST' && route === '/sweep') {
+        const body = await readJson(req)
+        const plan = body !== null && typeof body === 'object' ? body : {}
+        return send(200, prober.start({
+          port: Number(plan.port ?? 0),
+          targets: Array.isArray(plan.targets) ? plan.targets : [],
+        }))
+      }
+      if (method === 'GET' && route === '/sweep') {
+        return send(200, prober.status())
+      }
+      if (method === 'POST' && route === '/sweep/stop') {
+        return send(200, prober.stop())
       }
       if (method === 'POST' && route === '/memory/release') {
         const result = requestGarbageCollection()
@@ -132,7 +160,7 @@ export function apply(ctx, _config = {}) {
   }
 
   // Persist whatever the last generation changed before the successor starts.
-  ctx.effect(() => () => store.dispose(), 'model-float: state store')
+  ctx.effect(() => () => { store.dispose(); availability.dispose() }, 'model-float: state stores')
 }
 
 /**

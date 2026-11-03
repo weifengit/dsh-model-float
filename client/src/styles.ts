@@ -320,9 +320,15 @@ export const CSS = `
 .mf-model.is-region-blocked .mf-model-state { color: var(--dsw-alias-state-warn-primary, #b54708); }
 .mf-model.is-unavailable .mf-model-state { color: var(--dsw-alias-state-error-primary, #b42318); }
 .mf-model.is-throttled .mf-model-state { color: var(--dsw-alias-state-warn-primary, #b54708); }
+.mf-model.is-no-credit .mf-model-state,
+.mf-model.is-no-credential .mf-model-state { color: var(--dsw-alias-state-warn-primary, #b54708); }
 .mf-model.is-unknown .mf-model-state { color: var(--dsw-alias-label-secondary, #667085); }
 .mf-model.is-unavailable .mf-model-name,
 .mf-model.is-unknown .mf-model-name { opacity: 0.7; }
+
+/* The sweep button is the only control in the footer that spends real
+   requests, so it reads as an action rather than as another label. */
+.mf-sweep-btn { color: var(--dsw-alias-state-success-primary, #067647); }
 
 /* ── the whale ──────────────────────────────────────────────────────────── */
 
