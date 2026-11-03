@@ -353,7 +353,7 @@ console.log('model hiding')
   // 逐模型判定：列表只显可用+未探测，受限/限流/无额度直接隐藏。
   const cardSource = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'vendor-card.tsx'), 'utf8')
   check('the model list filters by verdict', cardSource.includes('isRefusedOrHidden'))
-  check('the sweep is one click away', cardSource.includes('mf-sweep-btn'))
+  check('the sweep is one click away', cardSource.includes('mf-probe-btn'))
   // 探测跑在宿主上：密钥从文件读，从不跨进页面。
   const gatewaySource = readFileSync(join(root, 'src', 'gateway.js'), 'utf8')
   check('the probe runs on the Host against the gateway', gatewaySource.includes('chat/completions'))

@@ -326,9 +326,30 @@ export const CSS = `
 .mf-model.is-unavailable .mf-model-name,
 .mf-model.is-unknown .mf-model-name { opacity: 0.7; }
 
-/* The sweep button is the only control in the footer that spends real
-   requests, so it reads as an action rather than as another label. */
-.mf-sweep-btn { color: var(--dsw-alias-state-success-primary, #067647); }
+/* The probe button sits left of refresh and the switch. Probing is the only
+   control that spends real requests, so it carries the accent while there is
+   something to ask, dims when every model has a verdict, and shows its
+   progress as done/total while it runs. */
+.mf-probe-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  width: auto;
+  padding: 0 5px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.mf-probe-btn:not(:disabled) {
+  color: var(--dsw-alias-brand-text, #2f6feb);
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-text, #2f6feb) 45%, transparent);
+}
+.mf-probe-btn:disabled { opacity: 0.45; }
+.mf-probe-btn.is-running {
+  color: var(--dsw-alias-state-success-primary, #067647);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary, #067647) 55%, transparent);
+}
+.mf-probe-glyph { display: block; }
 
 /* ── the whale ──────────────────────────────────────────────────────────── */
 

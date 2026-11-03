@@ -20,6 +20,32 @@ import { isUnusable } from './data.ts'
 import type { ModelRow, VendorRow } from './data.ts'
 import type { FreeModelState } from './use-free-model.ts'
 import type { Verdict } from './verdicts.ts'
+/**
+ * The probe button's glyph: a magnifier over a spark — the control that turns
+ * an untested model into a verdict. Line art like the ring's icons, so the
+ * header's controls read as one set.
+ */
+function ProbeGlyph(): React.ReactElement {
+  return (
+    <svg
+      className="mf-probe-glyph"
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5 21 21" />
+      <path d="M10.5 7v7" />
+    </svg>
+  )
+}
+
 
 /** The props the vendor card needs. */
 export interface VendorCardProps {
@@ -68,10 +94,18 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
     ? vendors.filter(row => !hiddenVendors.includes(row.vendor.id))
     : vendors
 
-  // Lane models the picker still lists and no verdict has answered: what the
-  // sweep button would go and ask about.
+  // Models the picker still lists and no verdict has answered: what the
+  // probe button goes and asks about — the lane's roster plus each vendor's
+  // picker models that have no `provider/model` verdict yet.
   const laneUnknown = (snapshot?.models ?? []).filter(model =>
     !model.hiddenByUser && (verdicts[model.id]?.state ?? 'unknown') === 'unknown').length
+  const probedVendorKeys = useMemo(() => Object.keys(verdicts).filter(key => key.includes('/')), [verdicts])
+  const vendorUnknown = vendors.reduce((sum, row) => {
+    const prefix = `${row.vendor.id}/`
+    const answered = probedVendorKeys.filter(key => key.startsWith(prefix)).length
+    return sum + Math.max(0, row.visibleModelCount - answered)
+  }, 0)
+  const probeCount = laneUnknown + vendorUnknown
   // How many lane models a verdict says can answer — the honest number beside
   // the lane's own count, which credits a listing as if it were an answer.
   const usableLane = (snapshot?.models ?? []).filter(model =>
@@ -135,6 +169,27 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
             ) : null}
           </div>
           <div className="mf-card-actions">
+            {/* The probe lives beside the controls that read the same truth:
+                it is what turns an untested model into a verdict, and the
+                list below only shows what those verdicts let through. */}
+            <button
+              type="button"
+              className={`mf-icon-btn mf-probe-btn ${sweeping ? 'is-running' : ''}`}
+              onClick={() => { if (sweeping) { stopSweep() } else { void runSweep() } }}
+              disabled={probeCount === 0 && !sweeping}
+              title={sweeping
+                ? t('sweep.progress', { done: sweepProgress.done, total: sweepProgress.total })
+                : probeCount > 0
+                  ? t('sweep.start', { count: probeCount })
+                  : t('sweep.allTested')}
+              aria-label={sweeping
+                ? t('sweep.stop')
+                : t('sweep.start', { count: probeCount })}
+            >
+              {sweeping
+                ? `${sweepProgress.done}/${sweepProgress.total}`
+                : <ProbeGlyph />}
+            </button>
             <button
               type="button"
               className="mf-icon-btn"
@@ -193,18 +248,6 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
           >
             {expanded ? t('card.hideModels') : t('card.showModels')}
           </button>
-          {laneUnknown > 0 || sweeping ? (
-            <button
-              type="button"
-              className="mf-text-btn mf-sweep-btn"
-              onClick={() => { if (sweeping) { stopSweep() } else { void runSweep() } }}
-              title={sweeping ? t('sweep.stop') : t('sweep.start', { count: laneUnknown })}
-            >
-              {sweeping
-                ? t('sweep.running', { done: sweepProgress.done, total: sweepProgress.total })
-                : t('sweep.start', { count: laneUnknown })}
-            </button>
-          ) : null}
           <span className="mf-foot-time">
             {snapshot === null ? '' : t('card.updated', { time: formatTime(snapshot.at) })}
           </span>
