@@ -99,17 +99,18 @@ const CHIPS: Record<IconName, Chip> = {
     ),
   },
 
-  // 内存释放: a broom. The head is a solid flared trapezoid with the handle
-  // running into it and three bristle tips past its outer edge — a pointed
-  // triangle here reads as a leaf, and a leaf is not "clean".
+  // 内存释放: a broom, standing upright — handle, collar, and a flared brush
+  // with a middle seam. A diagonal solid wedge reads as a cursor arrow, and
+  // a pointed triangle reads as a leaf; neither says "sweep".
   broom: {
     from: '#37e0b0',
     to: '#0d9f86',
     mark: (
       <>
-        <path d="M18.8 5.2 11.8 12.2" {...MARK} />
-        <path d="M9.96 10.36 13.64 14.04 11.37 19.13 4.87 12.63Z" fill="#ffffff" stroke="none" />
-        <path d="M6.17 12.09 4.75 13.51M8.12 14.04 6.7 15.46M10.07 15.99 8.65 17.41" {...MARK} opacity="0.75" />
+        <path d="M12 4.6v6.6" {...MARK} />
+        <rect x="9.6" y="11" width="4.8" height="2.2" rx="0.7" {...MARK} />
+        <path d="M10.1 13.4 7.5 19.5h9L13.9 13.4" {...MARK} />
+        <path d="M12 13.8v5.4" {...MARK} opacity="0.7" />
       </>
     ),
   },
