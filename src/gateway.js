@@ -110,11 +110,24 @@ export async function probeGatewayModel({ port, key, model, fetchImpl = globalTh
 /**
  * Read a gateway refusal's words.
  *
- * The gateway answers a dead account with 402 and its own text, a missing
- * credential with 502 + 「未配置凭据」, and a refused model with a status naming
- * the model. Only the last is a fact about *this* model; a vendor with no
- * credential is a fact about the vendor.
+ * Two refusals look alike and mean opposite things:
+ *
+ * - the **door** refusing the caller: `Missing or invalid API key` — a stale
+ *   gateway key says nothing about any model, and acting on it would hide
+ *   the whole picker;
+ * - a **provider** refusing the request: `codearts: model request failed
+ *   with HTTP 403` — the message names the provider, which proves the
+ *   request reached it and the provider answered. For 401/403 (and the
+ *   gateway's own AUTH code) that is the provider's credential: every model
+ *   behind it fails the same way, so it is a vendor-level fault.
+ *
+ * Without that distinction a vendor whose login expired answers 403 for all
+ * ten of its models, every answer is filed as `unknown` — and unknown is the
+ * one state that is never hidden, so the vendor sits in the picker at
+ * 「可用 0」forever.
  */
+const PROVIDER_PREFIX = /^[a-z0-9][a-z0-9_-]*\s*:/
+
 export function classifyRefusal(status, message) {
   const text = String(message ?? '')
   const lower = text.toLowerCase()
@@ -122,6 +135,12 @@ export function classifyRefusal(status, message) {
   if (status === 402 || /insufficient balance|no credit|quota exhausted/.test(lower)) return 'no-credit'
   if (/not available in your country|region/.test(lower)) return 'region-blocked'
   if (/free usage limit|rate limit|too many requests/.test(lower) || status === 429) return 'throttled'
+  // A message naming the provider got through the door and was answered by
+  // the provider itself, so its 401/403 is the provider's credential.
+  const fromProvider = PROVIDER_PREFIX.test(text)
+  if (fromProvider && status >= 400) {
+    return 'no-credential'
+  }
   // 502 is how this gateway wraps an upstream refusal — its words are the
   // answer, and 「no such model」 arrives inside one. 500/503/504 are the
   // gateway's own trouble, and 503 is spelled "Service Unavailable" by every
@@ -129,8 +148,8 @@ export function classifyRefusal(status, message) {
   // working model until the TTL ran out.
   const gatewayTrouble = status >= 500 && status !== 502
   if (!gatewayTrouble && /unavailable|not supported|no such model|unknown model|invalid model|does not exist/.test(lower)) return 'unavailable'
-  // 401 (a stale key), 5xx (the gateway's own trouble) and anything unrecognised
-  // say nothing about the model.
+  // A door-level 401 (a stale key), 5xx, and anything unrecognised say
+  // nothing about the model.
   return 'unknown'
 }
 
@@ -180,15 +199,30 @@ export function createProber({ store, merge, fetchImpl = globalThis.fetch, logge
 
   async function run(port, key, targets, signal) {
     let cursor = 0
+    // A vendor-level fault is the same answer for every model behind it, so
+    // one probe per provider is enough: the rest are filled in from it rather
+    // than each spending a request to learn what is already known.
+    const faulted = new Map()
+    const providerOf = (target) => {
+      const slash = target.key.indexOf('/')
+      return slash > 0 ? target.key.slice(0, slash) : ''
+    }
     const workers = Array.from({ length: Math.max(1, Math.min(PROBE_CONCURRENCY, targets.length)) }, async () => {
       while (cursor < targets.length) {
         if (signal.aborted) return
         const index = cursor++
         const target = targets[index]
-        const verdict = await probeGatewayModel({ port, key, model: target.modelId, fetchImpl, signal })
+        const provider = providerOf(target)
+        const carried = provider === '' ? undefined : faulted.get(provider)
+        const verdict = carried === undefined
+          ? await probeGatewayModel({ port, key, model: target.modelId, fetchImpl, signal })
+          : { state: carried.state, detail: carried.detail, latencyMs: 0 }
         if (signal.aborted) return
         const at = Date.now()
         state = { ...state, done: state.done + 1 }
+        if (provider !== '' && (verdict.state === 'no-credential' || verdict.state === 'no-credit')) {
+          faulted.set(provider, verdict)
+        }
         if (verdict.state !== 'unknown') {
           state = { ...state, results: { ...state.results, [target.key]: { ...verdict, at } } }
           try {

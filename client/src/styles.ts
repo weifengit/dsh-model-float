@@ -255,6 +255,7 @@ export const CSS = `
 .mf-vendor-state.is-hidden { color: var(--dsw-alias-label-secondary, #667085); background: color-mix(in srgb, var(--dsw-alias-label-secondary, #667085) 16%, transparent); }
 .mf-vendor-state.is-empty { color: var(--dsw-alias-state-error-primary, #b42318); background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #b42318) 12%, transparent); }
 .mf-vendor-state.is-error { color: var(--dsw-alias-state-error-primary, #b42318); background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #b42318) 12%, transparent); }
+.mf-vendor-state.is-broken { color: var(--dsw-alias-state-error-primary, #b42318); background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #b42318) 12%, transparent); }
 .mf-vendor-state.is-unknown { color: var(--dsw-alias-label-secondary, #667085); background: color-mix(in srgb, var(--dsw-alias-label-secondary, #667085) 14%, transparent); }
 .mf-vendor-balance {
   font-size: 12.5px;

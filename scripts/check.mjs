@@ -220,6 +220,10 @@ const S = await loadModule('client/src/features/free-model/sweep.ts')
   check('a vendor fault is not a model fact', V.isVendorFault('no-credential') && !V.isVendorFault('unavailable'))
   check('a 429 reads as throttled', G.classifyRefusal(429, 'Free usage limit reached') === 'throttled')
   check('a 401 says nothing about the model', G.classifyRefusal(401, 'invalid api key') === 'unknown')
+  // 厂商级 403（登录过期）是判定，门级 401（密钥错）不是：CodeArts 的 10
+  // 个模型全被 403 回答过，当时全部当成 unknown，于是永远「可用 0」地留着。
+  check('a provider 403 is a vendor fault', G.classifyRefusal(403, 'codearts: model request failed with HTTP 403') === 'no-credential')
+  check('a door 401 is not a verdict', G.classifyRefusal(401, 'Missing or invalid API key') === 'unknown')
   check('a 503 with the words does not ban a model', G.classifyRefusal(503, 'Service Unavailable') === 'unknown')
   check('a stale refusal is still a refusal', V.isRefused({ state: 'no-credential', source: 'gateway-probe', detail: '', at: 0 }))
   // 新鲜度：缓存里的判定过期后不再作数。

@@ -251,6 +251,7 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
               key={row.vendor.id}
               row={row}
               usable={usableByVendor[row.vendor.id] ?? 0}
+              refused={refusedByVendor[row.vendor.id] ?? 0}
               t={t}
             />
           ))}
@@ -283,12 +284,13 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
 }
 
 /** One vendor row of the card. */
-function VendorRowView({ row, usable, t }: {
+function VendorRowView({ row, usable, refused, t }: {
   row: VendorRow
   usable: number
+  refused: number
   t: VendorCardProps['t']
 }): React.ReactElement {
-  const state = stateOf(row)
+  const state = stateOf(row, refused)
   const balanceText = balanceTextOf(row, t)
   // A vendor whose models are all hidden is one the picker no longer lists.
   const allHidden = row.modelCount > 0 && row.visibleModelCount === 0
@@ -367,13 +369,17 @@ function rank(verdict: Verdict | undefined): number {
 }
 
 /** The states a vendor row can be in, collapsed from {@link VendorRow}. */
-type RowState = 'on' | 'idle' | 'closed' | 'hidden' | 'unknown' | 'empty' | 'error'
+type RowState = 'on' | 'idle' | 'closed' | 'hidden' | 'unknown' | 'empty' | 'error' | 'broken'
 
 /** Collapse a vendor row into the state the UI shows. */
-function stateOf(row: VendorRow): RowState {
+function stateOf(row: VendorRow, refused: number): RowState {
   if (row.state === 'hidden') return 'hidden'
   if (row.state === 'closed') return 'closed'
   if (row.state === 'on' && row.balance !== null && row.balance <= 0) return 'empty'
+  // Connected with credit, but every model the picker lists has been
+  // refused: the vendor is live and unusable, which is a different sentence
+  // from "已接入", and the reason the row would otherwise sit at 可用 0.
+  if (row.state === 'on' && row.visibleModelCount > 0 && refused >= row.visibleModelCount) return 'broken'
   if (row.state === 'on') return 'on'
   if (row.state === 'idle') return 'idle'
   if (row.error !== '') return 'error'
@@ -389,6 +395,7 @@ function stateLabel(state: RowState, t: VendorCardProps['t']): string {
     case 'hidden': return t('vendor.hidden')
     case 'empty': return t('vendor.empty')
     case 'error': return t('vendor.error')
+    case 'broken': return t('vendor.broken')
     default: return t('vendor.unknown')
   }
 }
