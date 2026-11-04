@@ -1,11 +1,14 @@
 /**
  * Model Float — the ring's icons.
  *
- * Each action is a small glass chip: a rounded plate with a coloured gradient,
- * a specular highlight along its top edge, and an abstract mark cut into it.
- * The marks are deliberately *not* pictures of things (no padlock, no broom) —
- * an action is a verb, and a verb reads better as a gesture than as the tool
- * you might use to perform it.
+ * Each action is a coloured glass chip: a rounded plate with a gradient, a
+ * specular highlight along its top edge, and a white pictogram cut into it.
+ *
+ * The pictograms are *literal* — a whale for the free models, a padlock for
+ * the lock screen, a broom for the memory sweep. The ring shows no labels, so
+ * the glyph is the only thing saying what the wedge does, and it has to be
+ * recognised at 38 px with nothing to lean on. An abstract mark looks designed
+ * and reads as noise: an orbit is not "models", a horizon is not "lock".
  *
  * They are inline SVG rather than emoji for two reasons: an emoji is rendered
  * by the platform's own font, so it looks different on every machine; and it
@@ -16,6 +19,7 @@
  */
 
 import React from 'react'
+import { FISH_LOGO_PATH, VIEWBOX } from '../whale.tsx'
 
 /** The icons the ring can show. */
 export type IconName = 'whale' | 'lock' | 'broom' | 'chart' | 'clock' | 'note' | 'gear' | 'power'
@@ -28,71 +32,104 @@ export interface IconProps {
   readonly size?: number
 }
 
-/** A chip's colour, and the mark drawn on it. */
+/** A chip's colour, and the pictogram drawn on it. */
 interface Chip {
   /** The gradient's two stops, top-lit: the lighter one reads as the glass. */
   readonly from: string
   readonly to: string
-  /** The abstract mark, on the same 24 × 24 grid as the plate. */
+  /** The pictogram, on the same 24 × 24 grid as the plate. */
   readonly mark: React.ReactNode
 }
 
 /**
- * The white mark is drawn at a fixed weight and opacity: it is a cut in the
- * glass, not a line on top of it, so it never changes with the chip's colour.
+ * The pictogram's own weight: white strokes with round caps, so it reads as
+ * cut into the glass rather than printed on it.
  */
-const MARK = { stroke: '#ffffff', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' } as const
+const MARK = {
+  stroke: '#ffffff', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
+} as const
+
+/**
+ * The mark's box inside the plate.
+ *
+ * The plate is 21.6 across with a 7.2 corner radius, so a pictogram that
+ * fills the grid reads as cropped at the corners. 16 px centred keeps every
+ * glyph inside the flat part of the glass.
+ */
+const BOX = 16
+
+/**
+ * The official whale, scaled into the mark's box.
+ *
+ * Reused from `whale.tsx` rather than redrawn: the float's mark and this chip
+ * are the same object, and two copies of the path would drift apart. It is
+ * filled, not stroked — at 16 px an outlined whale loses the fluke and reads
+ * as a blob.
+ */
+function fishMark(): React.ReactNode {
+  const scale = BOX / Math.max(VIEWBOX.width, VIEWBOX.height)
+  const offsetX = (24 - VIEWBOX.width * scale) / 2
+  const offsetY = (24 - VIEWBOX.height * scale) / 2
+  return (
+    <path
+      d={FISH_LOGO_PATH}
+      transform={`translate(${offsetX.toFixed(3)} ${offsetY.toFixed(3)}) scale(${scale.toFixed(4)})`}
+      fill="#ffffff"
+      stroke="none"
+    />
+  )
+}
 
 const CHIPS: Record<IconName, Chip> = {
-  // The free lane: an orbit — the pool of models a turn can land on.
-  whale: {
-    from: '#6f8bff',
-    to: '#2f4bd8',
-    mark: (
-      <>
-        <circle cx="12" cy="12" r="2.4" fill="#ffffff" stroke="none" />
-        <path d="M12 5.6a6.4 6.4 0 0 1 0 12.8" {...MARK} />
-        <path d="M12 18.4A6.4 6.4 0 0 1 12 5.6" {...MARK} opacity="0.45" />
-      </>
-    ),
-  },
-  // The lock screen: a horizon closing over the display.
+  // 白嫖模型: the whale itself — the same silhouette the float wears, so the
+  // wedge says "this is what the whale is".
+  whale: { from: '#6f8bff', to: '#2f4bd8', mark: fishMark() },
+
+  // 一键锁屏: a padlock. The shackle above the body and the keyhole in the
+  // middle are what make it a lock rather than a box.
   lock: {
     from: '#b07bff',
     to: '#6b34d6',
     mark: (
       <>
-        <circle cx="12" cy="12" r="6.4" {...MARK} />
-        <path d="M6.2 13.4h11.6" {...MARK} />
-        <path d="M12 16.6v2.2" {...MARK} opacity="0.5" />
+        <path d="M8.6 10.6V8.2a3.4 3.4 0 0 1 6.8 0v2.4" {...MARK} />
+        <rect x="6.4" y="10.6" width="11.2" height="8" rx="2.2" {...MARK} />
+        <path d="M12 13.6v2.2" {...MARK} />
       </>
     ),
   },
-  // Memory release: a downward purge — weight leaving the plate.
+
+  // 内存释放: a broom. The head is a solid flared trapezoid with the handle
+  // running into it and three bristle tips past its outer edge — a pointed
+  // triangle here reads as a leaf, and a leaf is not "clean".
   broom: {
     from: '#37e0b0',
     to: '#0d9f86',
     mark: (
       <>
-        <path d="M12 5.4v8.2" {...MARK} />
-        <path d="M8.6 10.4 12 13.8l3.4-3.4" {...MARK} />
-        <path d="M6.4 17.6h11.2" {...MARK} opacity="0.5" />
+        <path d="M18.8 5.2 11.8 12.2" {...MARK} />
+        <path d="M9.96 10.36 13.64 14.04 11.37 19.13 4.87 12.63Z" fill="#ffffff" stroke="none" />
+        <path d="M6.17 12.09 4.75 13.51M8.12 14.04 6.7 15.46M10.07 15.99 8.65 17.41" {...MARK} opacity="0.75" />
       </>
     ),
   },
-  // Metrics: three levels of load, no axis, no bars pretending to be a chart.
+
+  // 系统监控: three bars on a baseline — the shape everyone already reads as
+  // load.
   chart: {
     from: '#ffb34d',
     to: '#e0721c',
     mark: (
       <>
-        <path d="M7 15.6V9.4" {...MARK} />
-        <path d="M12 15.6V6.6" {...MARK} />
-        <path d="M17 15.6v-4" {...MARK} opacity="0.55" />
+        <path d="M5.6 18.4h12.8" {...MARK} />
+        <path d="M8.6 18.4v-4" {...MARK} />
+        <path d="M12 18.4V9.6" {...MARK} />
+        <path d="M15.4 18.4v-6.4" {...MARK} />
       </>
     ),
   },
-  // Time: a hand and the arc it has travelled.
+
+  // 时钟: a face, two hands, the pin in the middle.
   clock: {
     from: '#4ecbff',
     to: '#1f7fe0',
@@ -103,36 +140,45 @@ const CHIPS: Record<IconName, Chip> = {
       </>
     ),
   },
-  // A note: two lines of weight, no page corners.
+
+  // 笔记: a page with a folded corner and two lines of text.
   note: {
     from: '#f472b6',
     to: '#c2257e',
     mark: (
       <>
-        <path d="M7.4 9.6h9.2" {...MARK} />
-        <path d="M7.4 14.4h6" {...MARK} opacity="0.55" />
+        <path d="M7.2 5.2h6.6l3.4 3.4v10.2H7.2z" {...MARK} />
+        <path d="M13.8 5.2v3.4h3.4" {...MARK} />
+        <path d="M9.6 12.4h4.8M9.6 15.2h4.8" {...MARK} opacity="0.7" />
       </>
     ),
   },
-  // Settings: a ring with one notch — a dial, not a cog.
+
+  // 设置: a cog — a body ring, a hub and eight teeth reaching past the ring.
+  // Teeth floating around a bare circle read as a sun.
   gear: {
     from: '#a3aec4',
     to: '#5a6579',
     mark: (
       <>
-        <circle cx="12" cy="12" r="5.8" {...MARK} />
-        <path d="M12 6.2v2.2" {...MARK} />
+        <circle cx="12" cy="12" r="5" {...MARK} />
+        <circle cx="12" cy="12" r="1.6" {...MARK} />
+        <path
+          d="M12 7v-2M12 17v2M7 12H5M17 12h2M15.5 8.5 17 7M8.5 15.5 7 17M15.5 15.5 17 17M8.5 8.5 7 7"
+          {...MARK}
+        />
       </>
     ),
   },
-  // Power: an arc opening on a stem.
+
+  // 电源: the power glyph — an arc open at the top with a stem through it.
   power: {
     from: '#ff7a6e',
     to: '#d43b3b',
     mark: (
       <>
-        <path d="M8.2 8.4a5.6 5.6 0 1 0 7.6 0" {...MARK} />
-        <path d="M12 5.2v5.4" {...MARK} />
+        <path d="M7.8 8.2a5.6 5.6 0 1 0 8.4 0" {...MARK} />
+        <path d="M12 4.8v6.2" {...MARK} />
       </>
     ),
   },
@@ -143,7 +189,7 @@ const CHIPS: Record<IconName, Chip> = {
  *
  * @param props - see {@link IconProps}.
  */
-export function RingIcon({ name, size = 30 }: IconProps): React.ReactElement {
+export function RingIcon({ name, size = 38 }: IconProps): React.ReactElement {
   const chip = CHIPS[name]
   // useId is stable across re-renders, so a hover does not rebuild the
   // gradients; it is also unique per instance, which matters because the ring
@@ -167,7 +213,7 @@ export function RingIcon({ name, size = 30 }: IconProps): React.ReactElement {
           <stop offset="1" stopColor={chip.to} />
         </linearGradient>
         <linearGradient id={`${id}-gloss`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ffffff" stopOpacity="0.55" />
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.5" />
           <stop offset="0.55" stopColor="#ffffff" stopOpacity="0.06" />
           <stop offset="1" stopColor="#ffffff" stopOpacity="0" />
         </linearGradient>
@@ -181,12 +227,12 @@ export function RingIcon({ name, size = 30 }: IconProps): React.ReactElement {
         rx="7.2"
         fill="none"
         stroke="#ffffff"
-        strokeOpacity="0.35"
+        strokeOpacity="0.34"
         strokeWidth="0.8"
       />
-      {/* The highlight only covers the upper half: light falls on glass from
+      {/* The highlight covers the upper half only: light falls on glass from
           above, and a full plate would read as flat colour. */}
-      <rect x="2.6" y="2.2" width="18.8" height="10" rx="6" fill={`url(#${id}-gloss)`} />
+      <rect x="2.6" y="2.2" width="18.8" height="9.6" rx="5.6" fill={`url(#${id}-gloss)`} />
       <g>{chip.mark}</g>
     </svg>
   )
