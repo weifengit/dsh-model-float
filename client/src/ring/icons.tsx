@@ -1,14 +1,16 @@
 /**
  * Model Float — the ring's icons.
  *
- * Line art, drawn in the same hand as the whale: one path per icon, stroked
- * rather than filled, so the ring reads as a set of the same objects.
+ * Each action is a small glass chip: a rounded plate with a coloured gradient,
+ * a specular highlight along its top edge, and an abstract mark cut into it.
+ * The marks are deliberately *not* pictures of things (no padlock, no broom) —
+ * an action is a verb, and a verb reads better as a gesture than as the tool
+ * you might use to perform it.
  *
  * They are inline SVG rather than emoji for two reasons: an emoji is rendered
- * by the platform's own font, so it looks different on every machine and
- * nothing like the whale beside it; and a glyph cannot be given the ring's
- * stroke weight, so it sits on the arc as a pasted-on sticker instead of
- * belonging to it.
+ * by the platform's own font, so it looks different on every machine; and it
+ * cannot be given the ring's own light, so it sits on the arc as a pasted-on
+ * sticker instead of belonging to it.
  *
  * @module client/src/ring/icons.tsx
  */
@@ -26,64 +28,114 @@ export interface IconProps {
   readonly size?: number
 }
 
+/** A chip's colour, and the mark drawn on it. */
+interface Chip {
+  /** The gradient's two stops, top-lit: the lighter one reads as the glass. */
+  readonly from: string
+  readonly to: string
+  /** The abstract mark, on the same 24 × 24 grid as the plate. */
+  readonly mark: React.ReactNode
+}
+
 /**
- * The path data of every icon, on a 24 × 24 grid.
- *
- * The stroke is drawn with `currentColor`, so an icon takes the ring's colour
- * and the theme's changes follow.
+ * The white mark is drawn at a fixed weight and opacity: it is a cut in the
+ * glass, not a line on top of it, so it never changes with the chip's colour.
  */
-const PATHS: Record<IconName, string[]> = {
-  // A whale, drawn the way the float wears it: a rounded body, a fluke and
-  // an eye. The line weight matches the mark's own silhouette.
-  whale: [
-    'M4.2 14.6c0-4.2 3.6-7.1 8.3-7.1 2.9 0 5.3 1 6.8 2.8.7-1.3 1.1-2.6 1.1-3.9.5 1.5.3 3-.6 4.2-1.6 2.2-4.4 5.6-7.7 8.4',
-    'M3.4 12.2C2 11.4.9 10 .9 8.3c1.4 1 2.9 1.6 4.4 1.9',
-    'M7.4 16.8c1.4 1.2 3.3 1.8 5.3 1.6 1.7-.1 3.2-.9 4.4-2.1',
-    'M6.6 16.1c-.6 1.2-.7 2.3-.3 3.3 1.2-.3 2.1-1 2.7-2',
-    'M14.3 12.1a.95.95 0 1 0 0-1.9.95.95 0 0 0 0 1.9z',
-  ],
-  // A padlock, drawn as a body plus its shackle.
-  lock: [
-    'M6 10.5h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z',
-    'M8 10.5V7.4a4 4 0 0 1 8 0v3.1',
-    'M12 14.2v2.6',
-  ],
-  // A broom, for the memory release.
-  broom: [
-    'M14.6 3.6 20.4 9.4',
-    'M16.4 7.6 9 15',
-    'M9 15c-1.7 1-2.6 3-3 6 3-.4 5-1.3 6-3',
-    'M11.4 13.6 6 19',
-  ],
-  // A small chart, for the metrics.
-  chart: [
-    'M4 20h16',
-    'M7 20v-6',
-    'M12 20V7',
-    'M17 20v-9',
-  ],
-  // A clock face.
-  clock: [
-    'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z',
-    'M12 7.4V12l3 1.8',
-  ],
-  // A note, for a future action.
-  note: [
-    'M6 3.5h9l3.5 3.5v13.5H6z',
-    'M15 3.5V7h3.5',
-    'M9 12h6',
-    'M9 15.5h6',
-  ],
-  // A gear.
-  gear: [
-    'M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z',
-    'M19.3 14.4a1.5 1.5 0 0 0 .3 1.7l.1.1a1.8 1.8 0 1 1-2.6 2.6l-.1-.1a1.5 1.5 0 0 0-1.7-.3 1.5 1.5 0 0 0-.9 1.4v.2a1.8 1.8 0 1 1-3.6 0v-.1a1.5 1.5 0 0 0-1-1.4 1.5 1.5 0 0 0-1.7.3l-.1.1a1.8 1.8 0 1 1-2.6-2.6l.1-.1a1.5 1.5 0 0 0 .3-1.7 1.5 1.5 0 0 0-1.4-.9h-.2a1.8 1.8 0 1 1 0-3.6h.1a1.5 1.5 0 0 0 1.4-1 1.5 1.5 0 0 0-.3-1.7l-.1-.1a1.8 1.8 0 1 1 2.6-2.6l.1.1a1.5 1.5 0 0 0 1.7.3h.1a1.5 1.5 0 0 0 .9-1.4v-.2a1.8 1.8 0 1 1 3.6 0v.1a1.5 1.5 0 0 0 .9 1.4 1.5 1.5 0 0 0 1.7-.3l.1-.1a1.8 1.8 0 1 1 2.6 2.6l-.1.1a1.5 1.5 0 0 0-.3 1.7v.1a1.5 1.5 0 0 0 1.4.9h.2a1.8 1.8 0 1 1 0 3.6h-.1a1.5 1.5 0 0 0-1.4.9z',
-  ],
-  // A power symbol.
-  power: [
-    'M12 3.5v8',
-    'M17.4 6.6a7.5 7.5 0 1 1-10.8 0',
-  ],
+const MARK = { stroke: '#ffffff', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' } as const
+
+const CHIPS: Record<IconName, Chip> = {
+  // The free lane: an orbit — the pool of models a turn can land on.
+  whale: {
+    from: '#6f8bff',
+    to: '#2f4bd8',
+    mark: (
+      <>
+        <circle cx="12" cy="12" r="2.4" fill="#ffffff" stroke="none" />
+        <path d="M12 5.6a6.4 6.4 0 0 1 0 12.8" {...MARK} />
+        <path d="M12 18.4A6.4 6.4 0 0 1 12 5.6" {...MARK} opacity="0.45" />
+      </>
+    ),
+  },
+  // The lock screen: a horizon closing over the display.
+  lock: {
+    from: '#b07bff',
+    to: '#6b34d6',
+    mark: (
+      <>
+        <circle cx="12" cy="12" r="6.4" {...MARK} />
+        <path d="M6.2 13.4h11.6" {...MARK} />
+        <path d="M12 16.6v2.2" {...MARK} opacity="0.5" />
+      </>
+    ),
+  },
+  // Memory release: a downward purge — weight leaving the plate.
+  broom: {
+    from: '#37e0b0',
+    to: '#0d9f86',
+    mark: (
+      <>
+        <path d="M12 5.4v8.2" {...MARK} />
+        <path d="M8.6 10.4 12 13.8l3.4-3.4" {...MARK} />
+        <path d="M6.4 17.6h11.2" {...MARK} opacity="0.5" />
+      </>
+    ),
+  },
+  // Metrics: three levels of load, no axis, no bars pretending to be a chart.
+  chart: {
+    from: '#ffb34d',
+    to: '#e0721c',
+    mark: (
+      <>
+        <path d="M7 15.6V9.4" {...MARK} />
+        <path d="M12 15.6V6.6" {...MARK} />
+        <path d="M17 15.6v-4" {...MARK} opacity="0.55" />
+      </>
+    ),
+  },
+  // Time: a hand and the arc it has travelled.
+  clock: {
+    from: '#4ecbff',
+    to: '#1f7fe0',
+    mark: (
+      <>
+        <circle cx="12" cy="12" r="6.4" {...MARK} />
+        <path d="M12 8.6V12l2.6 1.6" {...MARK} />
+      </>
+    ),
+  },
+  // A note: two lines of weight, no page corners.
+  note: {
+    from: '#f472b6',
+    to: '#c2257e',
+    mark: (
+      <>
+        <path d="M7.4 9.6h9.2" {...MARK} />
+        <path d="M7.4 14.4h6" {...MARK} opacity="0.55" />
+      </>
+    ),
+  },
+  // Settings: a ring with one notch — a dial, not a cog.
+  gear: {
+    from: '#a3aec4',
+    to: '#5a6579',
+    mark: (
+      <>
+        <circle cx="12" cy="12" r="5.8" {...MARK} />
+        <path d="M12 6.2v2.2" {...MARK} />
+      </>
+    ),
+  },
+  // Power: an arc opening on a stem.
+  power: {
+    from: '#ff7a6e',
+    to: '#d43b3b',
+    mark: (
+      <>
+        <path d="M8.2 8.4a5.6 5.6 0 1 0 7.6 0" {...MARK} />
+        <path d="M12 5.2v5.4" {...MARK} />
+      </>
+    ),
+  },
 }
 
 /**
@@ -91,24 +143,52 @@ const PATHS: Record<IconName, string[]> = {
  *
  * @param props - see {@link IconProps}.
  */
-export function RingIcon({ name, size = 18 }: IconProps): React.ReactElement {
-  const paths = PATHS[name]
-  if (paths === undefined) return <></>
+export function RingIcon({ name, size = 30 }: IconProps): React.ReactElement {
+  const chip = CHIPS[name]
+  // useId is stable across re-renders, so a hover does not rebuild the
+  // gradients; it is also unique per instance, which matters because the ring
+  // renders several chips and a shared id would make every one of them take
+  // the first definition the browser met.
+  const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '')
+  if (chip === undefined) return <></>
+  const id = `mfchip${uid}-${name}`
   return (
     <svg
       className="mf-icon"
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      {paths.map((d, index) => <path key={index} d={d} />)}
+      <defs>
+        <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0" stopColor={chip.from} />
+          <stop offset="1" stopColor={chip.to} />
+        </linearGradient>
+        <linearGradient id={`${id}-gloss`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.55" />
+          <stop offset="0.55" stopColor="#ffffff" stopOpacity="0.06" />
+          <stop offset="1" stopColor="#ffffff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <rect x="1.2" y="1.2" width="21.6" height="21.6" rx="7.2" fill={`url(#${id}-fill)`} />
+      <rect
+        x="1.2"
+        y="1.2"
+        width="21.6"
+        height="21.6"
+        rx="7.2"
+        fill="none"
+        stroke="#ffffff"
+        strokeOpacity="0.35"
+        strokeWidth="0.8"
+      />
+      {/* The highlight only covers the upper half: light falls on glass from
+          above, and a full plate would read as flat colour. */}
+      <rect x="2.6" y="2.2" width="18.8" height="10" rx="6" fill={`url(#${id}-gloss)`} />
+      <g>{chip.mark}</g>
     </svg>
   )
 }
+

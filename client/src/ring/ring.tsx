@@ -16,8 +16,7 @@
  *
  * @module client/src/ring/ring.tsx
  */
-
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useMemo, useRef } from 'react'
 import {
   arcPath,
   arcRimPath,
@@ -55,6 +54,16 @@ export interface RingProps {
   /** The translator, bound to this plugin's namespace. */
   readonly t: (key: string, vars?: Record<string, string | number>) => string
 }
+
+/**
+ * The chip's edge in px.
+ *
+ * The ring shows a glyph and nothing else, so the chip takes the whole width
+ * the band can give it: the band is 62 px, and 38 leaves a margin on both
+ * edges so a chip never touches the rim.
+ */
+const CHIP_SIZE = 38
+const CHIP_HALF = CHIP_SIZE / 2
 
 /**
  * The ring.
@@ -141,21 +150,10 @@ export function Ring(props: RingProps): React.ReactElement | null {
             />
             <g
               className={`mf-ring-glyph ${active ? 'is-active' : ''}`}
-              transform={`translate(${wedge.iconX - 9} ${wedge.iconY - 9})`}
+              transform={`translate(${wedge.iconX - CHIP_HALF} ${wedge.iconY - CHIP_HALF})`}
             >
-              <RingIcon name={action.icon} size={18} />
+              <RingIcon name={action.icon} size={CHIP_SIZE} />
             </g>
-            {/* The name sits on the outer track, under its icon. Horizontal
-                and small on purpose: a quarter ring is cut to three 30°
-                wedges, and rotated or wrapped text would not fit at all. */}
-            <text
-              className={`mf-ring-label ${active ? 'is-active' : ''}`}
-              x={wedge.labelX}
-              y={wedge.labelY}
-              dy="0.34em"
-            >
-              {action.label}
-            </text>
             <title>{action.label}</title>
           </g>
         )

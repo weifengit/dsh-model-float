@@ -157,6 +157,33 @@ export function bestVerdict(lane: Verdict | undefined, cached: Verdict | undefin
 export function probeKey(provider: string, modelId: string): string {
   return `${provider}/${modelId}`
 }
+/**
+ * Which of a vendor's picker models must leave the picker.
+ *
+ * The rule the switch and the card both read, so the number the user is
+ * offered and the models that actually go are the same set:
+ *
+ * - a vendor that cannot serve at all (not connected, no credit) dooms every
+ *   one of its models — that is a vendor-level fact, already read once;
+ * - otherwise a model is doomed only by a verdict that refused it. An
+ *   untested model stays: hiding on an unknown would take away models that
+ *   work, and the whole point of the probe is that unknown is a question.
+ */
+export function doomedModelIds(
+  provider: string,
+  models: readonly { id: string, disabled: boolean, dead: boolean }[],
+  verdicts: Readonly<Record<string, Verdict>>,
+  vendorUnusable: boolean,
+): string[] {
+  const visible = models.filter(model => !model.disabled && !model.dead)
+  if (vendorUnusable) return visible.map(model => model.id)
+  return visible
+    .filter(model => {
+      const verdict = verdicts[probeKey(provider, model.id)]
+      return verdict !== undefined && (isRefused(verdict) || isVendorFault(verdict.state))
+    })
+    .map(model => model.id)
+}
 
 /**
  * Read a gateway refusal's words.

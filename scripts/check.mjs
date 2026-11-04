@@ -102,10 +102,10 @@ console.log('the ring')
   // The ring is drawn from a radius past the whale's corners, or the band shows
   // through the mark as a crescent; the hit area starts inside that, or the gap
   // between whale and ring is dead and the ring closes before it is reached.
-  // The band has to be wide enough for an icon *and* a name, and the inner
-  // edge still has to clear the whale's corners (27·√2 ≈ 38 px).
-  check('the ring is wide enough for an icon and a name', /INNER_RADIUS = (5|6)\d\b/.test(geometry))
-  check('every wedge carries an icon and a label anchor', ring.includes('wedge.labelX') && geometry.includes('ICON_RADIUS') && geometry.includes('LABEL_RADIUS'))
+  // The band has to be wide enough for a chip, and the inner edge still has
+  // to clear the whale's corners (27·√2 ≈ 38 px).
+  check('the ring is wide enough for a chip', /INNER_RADIUS = (5|6)\d\b/.test(geometry))
+  check('every wedge carries an icon anchor', ring.includes('wedge.iconX') && geometry.includes('ICON_RADIUS'))
   // The inner edge must run *back* along the arc. Adding the sweep instead
   // ends a quarter half a turn too far round, and the band fills the gap
   // beside the whale as a grey crescent — invisible on a half ring.

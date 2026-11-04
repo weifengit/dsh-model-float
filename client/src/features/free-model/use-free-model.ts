@@ -17,7 +17,7 @@ import {
   readAvailabilityCache, isUnusable,
 } from './data.ts'
 import type { FloatSnapshot, VendorRow } from './data.ts'
-import { bestVerdict, cachedVerdict, isRefused, isVendorFault, laneVerdict, probeKey } from './verdicts.ts'
+import { bestVerdict, cachedVerdict, doomedModelIds, laneVerdict } from './verdicts.ts'
 import type { CachedProbe, Verdict, VerdictState } from './verdicts.ts'
 import { readGatewayPort, runSweep as hostSweep } from './probe.ts'
 import type { SweepVerdict } from './probe.ts'
@@ -150,6 +150,36 @@ export function useFreeModel(): FreeModelState {
     setProbes(current => ({ ...current, ...next }))
   }, [])
 
+  // ── the switch's workhorse ───────────────────────────────────────────────
+  // Hide every picker model that a verdict (or a dead vendor) says cannot
+  // answer a turn, and record exactly which ids were hidden so "off" restores
+  // them and nothing the user closed by hand. The card's count and this loop
+  // read the same doomedModelIds rule, so the number offered is the set that
+  // actually goes.
+  const hideRefusedModels = useCallback(async (): Promise<Record<string, string[]>> => {
+    const current = snapshotRef.current
+    const table = verdictsRef.current
+    const hidden: Record<string, string[]> = {}
+    const failures: string[] = []
+    for (const row of current?.vendors ?? []) {
+      if (row.visibleModelCount === 0) continue
+      try {
+        const models = await readVendorModels(row.vendor.id)
+        const doomed = doomedModelIds(row.vendor.id, models, table, isUnusable(row))
+        if (doomed.length === 0) continue
+        const result = await setVendorModelsDisabled(row.vendor.id, doomed, true)
+        if (result.error !== '') { failures.push(`${row.vendor.name}：${result.error}`); continue }
+        hidden[row.vendor.id] = doomed
+      } catch (err) {
+        failures.push(`${row.vendor.name}：${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    if (failures.length > 0 && Object.keys(hidden).length === 0) {
+      throw new Error(failures.join('；'))
+    }
+    return hidden
+  }, [])
+
   const runSweep = useCallback(async () => {
     if (sweepRef.current !== null) return
     const current = snapshotRef.current
@@ -226,7 +256,29 @@ export function useFreeModel(): FreeModelState {
     // A fresh reading so the lane's counts and the vendors agree with the
     // verdicts the sweep just collected.
     refresh()
-  }, [recordSweepVerdicts, refresh])
+    // The switch is a standing decision, not a one-shot sweep: if it is on,
+    // the models this sweep just refused have to leave the picker too. The
+    // truth is read back from the Host rather than from state, so a sweep
+    // that finishes before the switch's own read lands still honours it.
+    if ((await readSwitch()).enabled) {
+      try {
+        const extra = await hideRefusedModels()
+        if (Object.keys(extra).length > 0) {
+          const state = await readSwitch()
+          const merged: Record<string, string[]> = {}
+          for (const [provider, ids] of Object.entries(state.hidden)) merged[provider] = [...ids]
+          for (const [provider, ids] of Object.entries(extra)) {
+            merged[provider] = [...new Set([...(merged[provider] ?? []), ...ids])]
+          }
+          await writeSwitch({ enabled: true, hidden: merged })
+          if (mounted.current) refresh()
+        }
+      } catch {
+        // A sweep that learned new refusals must not fail because the
+        // follow-up hide did; the verdicts are already on the Host.
+      }
+    }
+  }, [recordSweepVerdicts, refresh, hideRefusedModels])
 
   const stopSweep = useCallback(() => {
     sweepRef.current?.abort()
@@ -269,41 +321,7 @@ export function useFreeModel(): FreeModelState {
     setSwitchPending(true)
     try {
       if (on) {
-        // Hide the models that cannot answer a turn right now — decided
-        // *per model*, from the verdicts the sweep collected — and record
-        // exactly which ones so "off" restores them and nothing else.
-        const current = snapshotRef.current
-        const table = verdictsRef.current
-        const hidden: Record<string, string[]> = {}
-        const failures: string[] = []
-        for (const row of current?.vendors ?? []) {
-          if (row.visibleModelCount === 0) continue
-          // A vendor that is not connected at all hides under the vendor-level
-          // rule: every one of its models fails for the same reason.
-          const vendorDead = isUnusable(row)
-          try {
-            const models = await readVendorModels(row.vendor.id)
-            const visible = models.filter(model => !model.disabled && !model.dead)
-            const doomed = visible
-              .filter(model => {
-                if (vendorDead) return true
-                const verdict = table[probeKey(row.vendor.id, model.id)]
-                return verdict !== undefined
-                  && (isRefused(verdict) || isVendorFault(verdict.state))
-              })
-              .map(model => model.id)
-            if (doomed.length === 0) continue
-            const result = await setVendorModelsDisabled(row.vendor.id, doomed, true)
-            if (result.error !== '') { failures.push(`${row.vendor.name}：${result.error}`); continue }
-            hidden[row.vendor.id] = doomed
-          } catch (err) {
-            failures.push(`${row.vendor.name}：${err instanceof Error ? err.message : String(err)}`)
-          }
-        }
-        if (failures.length > 0 && Object.keys(hidden).length === 0) {
-          // Nothing was hidden at all — that is a real failure worth showing.
-          throw new Error(failures.join('；'))
-        }
+        const hidden = await hideRefusedModels()
         await writeSwitch({ enabled: true, hidden })
         setSwitchOn(true)
         hiddenRef.current = Object.keys(hidden)
@@ -328,7 +346,7 @@ export function useFreeModel(): FreeModelState {
     } finally {
       setSwitchPending(false)
     }
-  }, [refresh])
+  }, [refresh, hideRefusedModels])
 
   const doReleaseMemory = useCallback(async (): Promise<MemoryRelease> => {
     const result = await releaseMemory()

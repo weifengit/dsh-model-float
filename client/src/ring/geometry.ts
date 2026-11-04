@@ -19,41 +19,29 @@
 
 /**
  * The ring's inner radius, in px.
+ *
  * It must clear the whale's *corners*, not its edge: the seat is a 54 px
- * square, so its corners sit 27·√2 ≈ 38 px from the centre. It is also the
- * inner edge of the band that carries the icons and their names, so it sits
- * well outside the mark: a ring hugging the whale has no room for text.
+ * square, so its corners sit 27·√2 ≈ 38 px from the centre. The band starts
+ * outside that, so a chip on it never overlaps the mark.
  */
 export const INNER_RADIUS = 50
 
 /**
  * The ring's outer radius, in px.
  *
- * The band is what carries an action's icon *and* its name, so its width is
- * those two rows plus their padding — {@link INNER_RADIUS} keeps the inner
- * edge clear of the whale, this keeps the outer edge clear of the labels.
+ * The band is 62 px wide — room for a chip of {@link ICON_SIZE} with margin
+ * on both edges. This is also the radius the float tests against the viewport
+ * edge when it decides how much of the ring is cut away.
  */
 export const OUTER_RADIUS = 112
 
 /**
- * The distance from the centre to an action's icon, in px.
+ * The distance from the centre to an action's chip, in px.
  *
- * The icon sits in the inner half of the band, its name in the outer half:
- * 18 px of glyph plus a line of text do not fit side by side in a 30° wedge,
- * but they fit one above the other. The gap between the two radii is what
- * keeps them apart on a wedge that points sideways, where "above" and
- * "further out" are the same direction.
+ * Dead centre in the band: the ring shows a glyph and nothing else, so the
+ * widest chip still fits without touching either edge.
  */
-export const ICON_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 - 20
-
-/**
- * The distance from the centre to an action's label, in px.
- *
- * Kept close to the middle: a four-character name is ~40 px wide, and the
- * corners of that box are the first thing to poke out through the outer edge
- * on a wedge that points at a diagonal.
- */
-export const LABEL_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2 + 11
+export const ICON_RADIUS = (INNER_RADIUS + OUTER_RADIUS) / 2
 
 /**
  * The radius the pointer is measured from, in px.
@@ -99,12 +87,9 @@ export interface Wedge {
   readonly end: number
   /** The angle of the wedge's middle, in radians. */
   readonly middle: number
-  /** The icon's centre, in px, relative to the ring's centre. */
+  /** The chip's centre, in px, relative to the ring's centre. */
   readonly iconX: number
   readonly iconY: number
-  /** The label's centre, in px, relative to the ring's centre. */
-  readonly labelX: number
-  readonly labelY: number
 }
 
 /**
@@ -201,9 +186,7 @@ export function layoutWedges(
     const to = from + step
     const middle = (from + to) / 2
     // Angles run clockwise from 12 o'clock, so x grows with the sine and y
-    // with the cosine. The icon and its label sit on two radii — the icon
-    // inward, the label outward — so a wedge reads as a glyph above a name
-    // instead of two things fighting over the same point.
+    // with the cosine.
     return {
       id,
       start: from,
@@ -211,8 +194,6 @@ export function layoutWedges(
       middle,
       iconX: Math.sin(middle) * ICON_RADIUS,
       iconY: -Math.cos(middle) * ICON_RADIUS,
-      labelX: Math.sin(middle) * LABEL_RADIUS,
-      labelY: -Math.cos(middle) * LABEL_RADIUS,
     }
   })
 }

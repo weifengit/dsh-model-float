@@ -64,6 +64,7 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
   } | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const timerRef = useRef<number | undefined>(undefined)
+  const cardOpenRef = useRef(false)
 
   // ── viewport ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -123,7 +124,12 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
   // ring from popping up while the pointer merely crosses the whale.
   const openSoon = useCallback(() => {
     if (timerRef.current !== undefined) window.clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => setRingOpen(true), 160)
+    // The card and the ring are alternatives, not layers. The card hangs beside
+    // the whale, so the pointer reaches it by crossing the whale: re-arming the
+    // ring there would paint a ring over the panel the user is reading.
+    timerRef.current = window.setTimeout(() => {
+      if (!cardOpenRef.current) setRingOpen(true)
+    }, 160)
   }, [])
 
   const closeSoon = useCallback(() => {
@@ -134,9 +140,36 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
     timerRef.current = window.setTimeout(() => { setRingOpen(false); setHovered(undefined) }, 700)
   }, [])
 
+  // The card's open state, kept in a ref so the ring's delayed open can read
+  // it from inside a timeout. Hovering the card must never re-arm the ring:
+  // the two are alternatives, and a ring painted over the panel the user is
+  // reading is the bug this rule exists to prevent.
+  const cardEnter = useCallback(() => {
+    // Crossing onto the card dismisses the ring outright, and cancels any
+    // hover transition still pending. The pointer reaches the card by
+    // crossing the whale, which arms the ring's delayed open; without this the
+    // ring would bloom behind the panel the user is reading.
+    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current)
+    setRingOpen(false)
+    setHovered(undefined)
+  }, [])
+
+  const cardLeave = useCallback(() => {
+    // Leaving the card closes nothing. The card is opened by a click and
+    // dismissed by a press outside it, by Escape, or by clicking the whale —
+    // a hover exit that dropped the panel would make it impossible to read.
+  }, [])
+
+
   useEffect(() => () => {
     if (timerRef.current !== undefined) window.clearTimeout(timerRef.current)
   }, [])
+
+  // The ref is what the delayed open reads, so it has to hold the current
+  // truth before any timeout can fire.
+  useEffect(() => {
+    cardOpenRef.current = cardOpen
+  }, [cardOpen])
 
   // A result message is transient: it reports what an action just did, and
   // leaving it on screen forever would turn a toast into a stain.
@@ -315,8 +348,8 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
           side={cardSide}
           vertical={cardVertical}
           freeModel={freeModel}
-          onOpen={openSoon}
-          onClose={closeSoon}
+          onOpen={cardEnter}
+          onClose={cardLeave}
           t={t}
         />
         {notice !== '' ? (

@@ -473,36 +473,21 @@ export const CSS = `
 }
 .mf-ring-wedge.is-disabled { cursor: default; opacity: 0.35; }
 
-/* The icon is the pointer's target: an SVG has no background, so the parts
-   of it that are not painted do not receive pointer events at all. Letting the
-   icon take them is what makes a wedge clickable where its glyph is. */
+/* The chip is the pointer's target: an SVG has no background, so the parts
+   of it that are not painted do not receive pointer events at all. Letting
+   the glyph take them is what makes a wedge clickable where its chip is. */
 .mf-ring-glyph {
-  stroke: var(--dsw-alias-label-primary, #f9fafb);
   pointer-events: auto;
   user-select: none;
   cursor: pointer;
-  transition: stroke 120ms ease;
+  transition: filter 120ms ease;
 }
+/* The chip carries its own colour, so "active" is not a tint but a lift:
+   the glass catching more light than its neighbours. */
 .mf-ring-glyph.is-active {
-  stroke: #fff;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--mf-brand-blue, #4d6bfe) 90%, transparent));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45))
+    brightness(1.12) saturate(1.08);
 }
-
-/* The action's name, on the outer track under its icon. It stays horizontal
-   and small: the quarter ring is cut to three 30° wedges, where rotated or
-   wrapped text would not fit at all. */
-.mf-ring-label {
-  fill: var(--dsw-alias-label-primary, #f9fafb);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-anchor: middle;
-  opacity: 0.78;
-  pointer-events: none;
-  user-select: none;
-  transition: opacity 120ms ease;
-}
-.mf-ring-label.is-active { opacity: 1; }
 
 /* ── the lock screen ─────────────────────────────────────────────────────── */
 

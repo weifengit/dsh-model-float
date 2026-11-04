@@ -17,6 +17,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { isUnusable } from './data.ts'
+import { isRefused } from './verdicts.ts'
 import type { ModelRow, VendorRow } from './data.ts'
 import type { FreeModelState } from './use-free-model.ts'
 import type { Verdict } from './verdicts.ts'
@@ -85,9 +86,25 @@ export function VendorCard(props: VendorCardProps): React.ReactElement {
   const withCredit = vendors.filter(row => row.balance !== null && row.balance > 0).length
   // How many models are still cluttering the picker across every vendor.
   const visibleModels = vendors.reduce((sum, row) => sum + row.visibleModelCount, 0)
-  // The vendors whose models are in the picker but cannot answer a turn.
+  // What the switch would hide: a vendor that cannot serve at all dooms its
+  // whole picker set; otherwise only the models a verdict refused. The switch
+  // itself re-reads the same rule per model (doomedModelIds), so this count
+  // is the honest size of the offer.
+  const refusedByVendor = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const [key, verdict] of Object.entries(verdicts)) {
+      if (!isRefused(verdict)) continue
+      const slash = key.indexOf('/')
+      if (slash <= 0) continue
+      const provider = key.slice(0, slash)
+      counts[provider] = (counts[provider] ?? 0) + 1
+    }
+    return counts
+  }, [verdicts])
   const unusable = vendors.filter(isUnusable)
-  const unusableModels = unusable.reduce((sum, row) => sum + row.visibleModelCount, 0)
+  const unusableModels = vendors.reduce((sum, row) => sum + (isUnusable(row)
+    ? row.visibleModelCount
+    : Math.min(refusedByVendor[row.vendor.id] ?? 0, row.visibleModelCount)), 0)
   // With the switch on, those vendors are gone from the list — the list only
   // shows what can still answer a turn.
   const listed = switchOn
