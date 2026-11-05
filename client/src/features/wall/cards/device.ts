@@ -18,7 +18,7 @@
  */
 
 import { fractionToPercent, formatBytes, formatFraction } from '../format.ts'
-import { failedCard, isFailure, list, loadTone, pick, through } from '../reading.ts'
+import { failedCard, isFailure, loadTone, pick } from '../reading.ts'
 import type { CardDefinition, CardFailure, Reading, WallContext } from '../reading.ts'
 
 /** The card's own shape, whichever side of the fallback produced it. */
@@ -45,6 +45,8 @@ export interface DeviceReading {
   readonly hostname: string
   readonly platform: string
   readonly uptime: number | null
+  /** Per-core usage, each 0..1; only the channel reports it. */
+  readonly coreUsages: readonly number[]
   /** Which side produced the reading, so the caption can be honest. */
   readonly local: boolean
 }
@@ -68,6 +70,7 @@ export function fromHomepage(payload: unknown): DeviceReading {
     hostname: pick<string>(payload, 'system', 'hostname') ?? '',
     platform: pick<string>(payload, 'system', 'platform') ?? '',
     uptime: pick<number>(payload, 'system', 'uptime') ?? null,
+    coreUsages: pick<number[]>(payload, 'cpu', 'cores') ?? [],
     local: false,
   }
 }
@@ -98,6 +101,7 @@ export function fromSampler(sample: {
     hostname: '',
     platform: '',
     uptime: null,
+    coreUsages: [],
     local: true,
   }
 }
@@ -142,7 +146,7 @@ export function preview(data: DeviceReading | CardFailure, ctx: WallContext): Re
 /** The expanded page: the per-core picture and what the glance had to drop. */
 export function detail(data: DeviceReading | CardFailure, ctx: WallContext): ReturnType<NonNullable<CardDefinition['detail']>> {
   if (isFailure(data)) return { groups: [], note: data.message }
-  const perCore = list<number>(data, '__cores')
+  const perCore = data.coreUsages
   return {
     groups: [
       {

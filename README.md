@@ -195,6 +195,10 @@ flat 的 id 列表，排除只在一次请求被拒时才暴露。所以面板�
 
 **依赖**：卡片墙需要 `dsh-homepage` 插件提供数据端点。如果未安装，设备卡片会降级到本地采样器（仅显示 CPU/内存），其他卡片显示"需要安装 dsh-homepage"。
 
+```bash
+dsh plugin --profile web add dsh-homepage
+```
+
 ## 安装
 
 ```bash

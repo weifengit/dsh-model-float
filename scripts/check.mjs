@@ -4,7 +4,7 @@
 //   1. 定位计算（夹取、换角）——窗口尺寸变化时不能把鲸鱼弄丢；
 //   2. 产物的形状——dist/client.js 必须是 ModuleLoader 认得的 classic-script；
 //   3. 源码里没有语法上明显的问题（用 node 解析宿主半边）。
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { transform, build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -310,6 +310,14 @@ console.log('the card wall')
   check('the catalog includes tools', cards.includes('toolsCard'))
   check('the catalog includes skills', cards.includes('skillsCard'))
   check('the catalog includes groups', cards.includes('groupsCard'))
+  // 本轮修的三个逻辑断链：字段名、占位键、孤儿文件。
+  const deviceSrc = readFileSync(join(root, 'client', 'src', 'features', 'wall', 'cards', 'device.ts'), 'utf8')
+  check('the device card folds the per-core array', deviceSrc.includes('coreUsages') && !deviceSrc.includes('__cores'))
+  check('the wall renames the shell displayTitle to title', wall.includes('displayTitle'))
+  check('the wall rides the shared metrics reader', wall.includes('readMetrics'))
+  check('the weather module is gone', !existsSync(join(root, 'client', 'src', 'features', 'lockscreen', 'weather.ts')))
+  const lockSrc = readFileSync(join(root, 'client', 'src', 'features', 'lockscreen', 'lock-screen.tsx'), 'utf8')
+  check('the lock screen carries only the clock and the wall', !lockSrc.includes('WeatherRow') && !lockSrc.includes('MetricsRow') && !lockSrc.includes('ActiveSessions'))
   check('the catalog includes audit', cards.includes('auditCard'))
 }
 
@@ -481,6 +489,39 @@ console.log('availability in the model picker')
   // 窄输入框：模型名必须像原生一样收成图标，而不是把整行挤到第二行。
   check('the seat answers the shell compact-width flags', styles.includes('--dsh-composer-model-text-display') && styles.includes('--dsh-composer-model-icon-display'))
   check('the seat carries a glyph for the compact case', picker.includes('<ModelGlyph />'))
+}
+
+console.log('locale dictionaries stay in step')
+{
+  // 卡片用 t() 取文案：zh 与 en 的键集必须一致，每个用到的键都要存在。
+  // 上次「刷新后指示灯消失」的排查里，字典被顺手改坏过一次，这一条就是防线。
+  const idx = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
+  const parts = idx.split(/\n *en: \{/)
+  const keysOf = (text) => new Set([...text.matchAll(/'([a-z][a-zA-Z0-9_.]+)':/g)].map((m) => m[1]))
+  const zhKeys = keysOf(parts[0])
+  const enKeys = keysOf(parts[1] || '')
+  const onlyZh = [...zhKeys].filter((k) => !enKeys.has(k))
+  const onlyEn = [...enKeys].filter((k) => !zhKeys.has(k))
+  check('zh and en carry the same keys', onlyZh.length === 0 && onlyEn.length === 0)
+  if (onlyZh.length > 0) console.error('    only in zh: ' + onlyZh.join(', '))
+  if (onlyEn.length > 0) console.error('    only in en: ' + onlyEn.join(', '))
+  const usedWall = new Set()
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) { walk(p); continue }
+      if (!/\.(ts|tsx)$/.test(entry.name)) continue
+      const src = readFileSync(p, 'utf8')
+      for (const m of src.matchAll(/'(wall\.[a-zA-Z0-9_.]+)'/g)) usedWall.add(m[1])
+      for (const m of src.matchAll(/`(wall\.[a-zA-Z0-9_.]+)\$\{/g)) {
+        for (const id of ['sessions', 'storages', 'logs', 'cache', 'attachments', 'profiles']) usedWall.add(`${m[1].replace(/\.$/, '')}.${id}`)
+      }
+    }
+  }
+  walk(join(root, 'client', 'src', 'features'))
+  const missing = [...usedWall].filter((k) => !zhKeys.has(k))
+  check('every wall key the cards ask for is in the dictionary', missing.length === 0)
+  if (missing.length > 0) console.error('    missing: ' + missing.join(', '))
 }
 
 

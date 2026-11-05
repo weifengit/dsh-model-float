@@ -14,19 +14,22 @@
  * @module client/src/features/wall/wall.tsx
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CardDefinition, Reading, Tone, WallContext, CardFailure, SessionRow } from './reading.ts'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CardDefinition, WallContext, CardFailure, SessionRow } from './reading.ts'
 import { CARDS } from './cards.ts'
-import type { HomepageCall } from './reading.ts'
 import { channelCallFrom } from '../homepage/rpc.ts'
 import { createHomepageRpc } from '../homepage/rpc.ts'
+import { readMetrics } from '../system/metrics-client.ts'
 
 /** The services the wall needs from the shell. */
 export interface WallProps {
   /** The translator, bound to this plugin's namespace. */
   readonly t: (key: string, vars?: Record<string, string | number>) => string
   /** The shell's session list hook. */
-  readonly useSessions: (selector: (state: { ids: readonly string[], byId: Record<string, SessionRow> }) => unknown) => unknown
+  readonly useSessions: (selector: (state: {
+    ids: readonly string[]
+    byId: Record<string, { id?: string, displayTitle?: string, running?: boolean }>
+  }) => unknown) => unknown
   /** The browser plugin context, for the shared RPC channel. */
   readonly ctx?: Record<string, any>
 }
@@ -59,24 +62,30 @@ export function Wall(props: WallProps): React.ReactElement {
   }, [])
 
   // The shell's session list, read through the hook it provides.
-  const sessions = useSessions(state => state) as { ids: readonly string[], byId: Record<string, SessionRow> }
+  // The shell rows carry displayTitle; the wall's own vocabulary is title.
+  // Reading the field straight as a SessionRow would leave every row blank.
+  const sessions = useSessions(state => state) as {
+    ids: readonly string[]
+    byId: Record<string, { id?: string, displayTitle?: string, running?: boolean }>
+  }
   const sessionRows = useMemo<readonly SessionRow[]>(() => {
     if (sessions === null || sessions === undefined) return []
-    return sessions.ids.map(id => sessions.byId[id]).filter((row): row is SessionRow => row !== undefined)
+    return sessions.ids
+      .map((id) => {
+        const row = sessions.byId[id]
+        if (row === undefined) return undefined
+        return { id, title: row.displayTitle ?? '', running: row.running === true }
+      })
+      .filter((row): row is SessionRow => row !== undefined)
   }, [sessions])
 
   // The RPC channel, resolved per call so a late-offered service still works.
   const rpc = useMemo(() => createHomepageRpc(() => channelCallFrom(ctx ?? null)), [ctx])
 
   // The sampler, for the device card's local fallback.
-  const sampler = useCallback(async () => {
-    const response = await fetch('/api/model-float/metrics', { headers: { accept: 'application/json' } })
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-    return response.json() as Promise<{
-      at: number, cpu: number | null, systemUsed: number, systemTotal: number,
-      heapUsed: number, heapTotal: number, netDown: number | null, netUp: number | null
-    }>
-  }, [])
+  // The sampler, for the device card's local fallback. It rides the shared
+  // reader the rest of the plugin uses, not a second copy of the URL.
+  const sampler = useCallback(() => readMetrics(), [])
 
   // The context every card sees.
   const wallCtx = useMemo<WallContext>(() => ({

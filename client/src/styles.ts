@@ -541,11 +541,6 @@ export const CSS = `
 }
 .mf-lock-date { margin-top: 14px; font-size: 17px; font-weight: 500; color: rgba(255, 255, 255, 0.72); }
 
-.mf-lock-weather { display: flex; align-items: center; gap: 12px; font-size: 16px; }
-.mf-lock-weather-icon { font-size: 30px; }
-.mf-lock-weather-temp { font-size: 30px; font-weight: 300; font-variant-numeric: tabular-nums; }
-.mf-lock-weather-desc { color: rgba(255, 255, 255, 0.76); }
-.mf-lock-weather-place { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
 
 .mf-lock-metrics {
   display: grid;
