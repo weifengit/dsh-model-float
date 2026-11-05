@@ -209,3 +209,6 @@ export function verdictSnapshot(): Readonly<Record<string, Verdict>> {
 export function useVerdicts(): Readonly<Record<string, Verdict>> {
   return useSyncExternalStore(subscribeVerdicts, verdictSnapshot)
 }
+// ── 模块加载时自动初始化 ─────────────────────────────────────────────────────
+// 确保页面刷新后立即读取数据，不依赖组件的 useEffect 时机
+void refreshReadings()

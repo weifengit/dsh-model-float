@@ -224,9 +224,8 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
   // The table is a shared store: the vendor card publishes into it, and a page
   // where the card is not mounted still asks for one read here.
   useEffect(() => {
-    void refreshReadings()
+    void refreshReadings(true)
   }, [])
-
   // ── placement ────────────────────────────────────────────────────────────
   // The panel is portalled onto the body so the composer's overflow cannot clip
   // it; that means it is positioned against the trigger's viewport rect and has

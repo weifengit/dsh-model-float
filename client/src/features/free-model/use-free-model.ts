@@ -249,7 +249,7 @@ export function useFreeModel(): FreeModelState {
     mounted.current = true
     refresh()
     // 确保 verdict 表在 hook 挂载时立即初始化，而不是等待 ComposerModelPicker 挂载
-    void refreshReadings()
+    void refreshReadings(true)
     // The switch's durable state lives on the Host, so it survives a restart:
     // the models it hid are still hidden, and the panel must show the switch
     // as on, not off.
