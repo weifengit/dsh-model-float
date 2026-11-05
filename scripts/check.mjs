@@ -272,9 +272,10 @@ console.log('the lock screen')
   const lock = readFileSync(join(root, 'client', 'src', 'features', 'lockscreen', 'lock-screen.tsx'), 'utf8')
   const metrics = readFileSync(join(root, 'client', 'src', 'features', 'system', 'metrics-client.ts'), 'utf8')
   check('the lock screen shows a clock', lock.includes('mf-lock-time'))
-  check('the lock screen shows the weather', lock.includes('mf-lock-weather'))
-  check('the lock screen shows the system metrics', lock.includes('mf-lock-metrics'))
-  check('the lock screen shows the active sessions', lock.includes('mf-lock-sessions'))
+  check('the lock screen shows the card wall', lock.includes('Wall'))
+  check('the lock screen no longer shows weather', !lock.includes('mf-lock-weather'))
+  check('the lock screen no longer shows system metrics', !lock.includes('mf-lock-metrics'))
+  check('the lock screen no longer shows active sessions', !lock.includes('mf-lock-sessions'))
   check('the metrics come from the Host', metrics.includes('/api/model-float/metrics'))
   // os.networkInterfaces() has no byte counters, so the sampler must read the
   // operating system's own.
@@ -285,6 +286,33 @@ console.log('the lock screen')
   // on for a throwaway V8 context to obtain the real collector.
   check('the collector is obtained without a launch flag', hostMetrics.includes('setFlagsFromString'))
 }
+
+console.log('the card wall')
+{
+  const wall = readFileSync(join(root, 'client', 'src', 'features', 'wall', 'wall.tsx'), 'utf8')
+  const rpc = readFileSync(join(root, 'client', 'src', 'features', 'homepage', 'rpc.ts'), 'utf8')
+  check('the wall renders the card grid', wall.includes('mf-wall'))
+  check('the wall uses the homepage RPC', wall.includes('createHomepageRpc'))
+  check('the wall passes ctx to the RPC', wall.includes('ctx'))
+  check('the wall has a detail overlay', wall.includes('mf-wall-detail'))
+  check('the RPC calls homepage/* endpoints', rpc.includes('homepage/'))
+  check('the RPC handles absent plugin', rpc.includes('absent'))
+  check('the RPC handles transport failure', rpc.includes('transport'))
+  
+  const cards = readFileSync(join(root, 'client', 'src', 'features', 'wall', 'cards.ts'), 'utf8')
+  check('the card catalog lists all 11 cards', cards.includes('sessionsCard'))
+  check('the catalog includes device', cards.includes('deviceCard'))
+  check('the catalog includes token', cards.includes('tokenCard'))
+  check('the catalog includes network', cards.includes('networkCard'))
+  check('the catalog includes core', cards.includes('coreCard'))
+  check('the catalog includes storage', cards.includes('storageCard'))
+  check('the catalog includes projects', cards.includes('projectsCard'))
+  check('the catalog includes tools', cards.includes('toolsCard'))
+  check('the catalog includes skills', cards.includes('skillsCard'))
+  check('the catalog includes groups', cards.includes('groupsCard'))
+  check('the catalog includes audit', cards.includes('auditCard'))
+}
+
 
 console.log('bundle shape')
 {
@@ -438,6 +466,21 @@ console.log('availability in the model picker')
   check('a subagent session renders no seat', picker.includes('if (!available) return null'))
   // 人工标记入口必须彻底消失：判定只来自探测。
   check('no manual marking remains', !picker.includes('setVendorModelsDisabled') && !picker.includes('markUnavailable'))
+  // 底部控制条：浮标卡片上的三个动作必须就在选模型的地方，不是另挂一套。
+  check('the picker footer carries the panel actions', picker.includes('mf-picker-footer') && picker.includes('mf-picker-footer-btn'))
+  check('the footer drives the shared switch', picker.includes('setSwitch('))
+  check('the footer drives the shared refresh', picker.includes('freeModel.refresh()'))
+  check('the footer drives the shared sweep', picker.includes('freeModel.runSweep') && picker.includes('freeModel.stopSweep'))
+  // 厂商名吸顶 + 余额：用户滚动几百个模型时仍知道自己在哪家名下。
+  const styles = readFileSync(join(root, 'client', 'src', 'styles.ts'), 'utf8')
+  check('the vendor header sticks while scrolling', /\.mf-picker-group-name\s*\{[^}]*position:\s*sticky/.test(styles))
+  check('the vendor header appears exactly once', (styles.match(/\.mf-picker-group-name/g) ?? []).length === 1)
+  check('the vendor balance has its own slot', styles.includes('.mf-picker-group-balance'))
+  check('the picker renders the vendor balance', picker.includes('mf-picker-group-balance') && picker.includes('vendorBalance'))
+  check('the picker formats each vendor own unit', picker.includes('shortUnit'))
+  // 窄输入框：模型名必须像原生一样收成图标，而不是把整行挤到第二行。
+  check('the seat answers the shell compact-width flags', styles.includes('--dsh-composer-model-text-display') && styles.includes('--dsh-composer-model-icon-display'))
+  check('the seat carries a glyph for the compact case', picker.includes('<ModelGlyph />'))
 }
 
 

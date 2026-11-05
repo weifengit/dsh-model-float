@@ -37,7 +37,10 @@ export interface FloatProps {
   readonly t: (key: string, vars?: Record<string, string | number>) => string
   /** The shell's session list hook, handed down to the lock screen. */
   readonly useSessions: (selector: (state: never) => unknown) => unknown
+  /** The browser plugin context, for the shared RPC channel. */
+  readonly ctx?: Record<string, any>
 }
+
 
 /**
  * The floating whale and everything around it.
@@ -379,7 +382,9 @@ export function ModelFloat(props: FloatProps): React.ReactElement {
         onClose={() => setLockOpen(false)}
         useSessions={props.useSessions as never}
         t={t}
+        ctx={props.ctx}
       />
+
     </>,
     document.body,
   )

@@ -28,8 +28,18 @@ import { pickerProbeKey } from './composer-keys.ts'
 import { verdictLabel, verdictTone } from './verdict-copy.ts'
 import type { VerdictTone } from './verdict-copy.ts'
 import { refreshReadings, useVerdicts } from './verdict-store.ts'
+import { useFreeModel } from './use-free-model.ts'
 
-/** One row of the list: a model, its group, and the selection it would submit. */
+/** Format a vendor's unit label compactly for the picker group header. */
+function shortUnit(unit: string): string {
+  switch (unit) {
+    case 'credits': return ' cr'
+    case 'dollars': return '$'
+    case 'tokens': return ' tk'
+    case 'quota': return ''
+    default: return ''
+  }
+}
 interface Choice {
   readonly groupId: string
   readonly groupName: string
@@ -37,21 +47,9 @@ interface Choice {
   readonly tone: VerdictTone
   readonly title: string
 }
+export type PickerChoice = Choice
 
-/** Where the portal sits until the first measure pass places it. */
-const MEASURE_STYLE: React.CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
 
-/** How close to the viewport edge the panel is allowed to get. */
-const VIEWPORT_MARGIN = 12
-
-/** Above this many models the list gets a search field. */
-const SEARCH_THRESHOLD = 4
-
-/**
- * How a group is titled. The account group is the shell's own signed-in
- * provider and has a name of its own; every other group shows what the Host
- * called it.
- */
 function groupTitle(id: string, name: string, t: ComposerModelPickerProps['t']): string {
   return id === 'deepseek-account' ? t('picker.account') : name
 }
@@ -98,6 +96,32 @@ function Check(): React.ReactElement {
       focusable="false"
     >
       <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  )
+}
+
+/**
+ * The glyph the seat falls back to when the composer has no room for a name.
+ * A chip reads as "which model" without reading as a word, which is what the
+ * narrow row has space for.
+ */
+function ModelGlyph(): React.ReactElement {
+  return (
+    <svg
+      className="mf-picker-trigger-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="7.5" y="7.5" width="9" height="9" rx="2" />
+      <path d="M10 3.8v2.2M14 3.8v2.2M10 18v2.2M14 18v2.2M3.8 10h2.2M3.8 14h2.2M18 10h2.2M18 14h2.2" />
     </svg>
   )
 }
@@ -156,8 +180,6 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
           groupName: groupTitle(group.id, group.name, t),
           model,
           tone: verdictTone(state_),
-          // The verdict's own words are the hover text: a throttled model and a
-          // region-blocked one are both a red dot, and only this says which.
           title: state_ === undefined || state_ === 'unknown'
             ? t('picker.untested')
             : verdict?.detail !== undefined && verdict.detail !== ''
@@ -171,7 +193,7 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
 
   const grouped = useMemo(() => {
     const order: string[] = []
-    const byGroup = new Map<string, Choice[]>()
+    const byGroup = new Map<string, typeof choices>()
     for (const row of choices) {
       const bucket = byGroup.get(row.groupId)
       if (bucket === undefined) {
@@ -181,10 +203,15 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
       }
       bucket.push(row)
     }
-    return order.map(groupId => byGroup.get(groupId) as Choice[])
+    return order.map(groupId => byGroup.get(groupId) as typeof choices)
   }, [choices])
 
-  const showSearch = groups.reduce((sum, group) => sum + group.models.length, 0) > SEARCH_THRESHOLD
+  const showSearch = groups.reduce((sum, group) => sum + group.models.length, 0) > 4
+  const freeModel = useFreeModel()
+  const vendorBalance = useMemo<Map<string, { balance: number | null, unit: string }>>(
+    () => new Map(freeModel.vendors.map(v => [v.vendor.id, { balance: v.balance, unit: v.vendor.unit }])),
+    [freeModel.vendors],
+  )
 
   // ── reading ──────────────────────────────────────────────────────────────
   // The catalog is advisory and shared: ask for it whenever the seat mounts or
@@ -216,8 +243,8 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
       const height = menuRef.current?.offsetHeight ?? 0
       let left = rect.right - width
       let top = rect.top - 8 - height
-      if (width > 0) left = Math.min(Math.max(left, VIEWPORT_MARGIN), window.innerWidth - width - VIEWPORT_MARGIN)
-      if (height > 0) top = Math.min(Math.max(top, VIEWPORT_MARGIN), window.innerHeight - height - VIEWPORT_MARGIN)
+      if (width > 0) left = Math.min(Math.max(left, 12), window.innerWidth - width - 12)
+      if (height > 0) top = Math.min(Math.max(top, 12), window.innerHeight - height - 12)
       setMenuPos({ left, top })
     }
     place()
@@ -341,6 +368,7 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
         }}
       >
         <VerdictDot tone={triggerTone} />
+        <ModelGlyph />
         <span className="mf-picker-label">{label}</span>
         {effortName !== undefined && <span className="mf-picker-effort">{effortName}</span>}
         <Chevron open={open} />
@@ -350,7 +378,7 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
           ref={menuRef}
           id={`${id}-menu`}
           className="mf-picker-menu"
-          style={menuPos ?? MEASURE_STYLE}
+          style={menuPos ?? { visibility: 'hidden', left: 0, top: 0 }}
           role="dialog"
           aria-label={t('picker.menu')}
           // The panel is portalled, so Escape typed inside it never reaches
@@ -386,30 +414,44 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
           ))}
 
           <div className="mf-picker-list" role="listbox" aria-label={t('picker.menu')}>
-            {grouped.map(rows => (
-              <div className="mf-picker-group" key={rows[0].groupId}>
-                <div className="mf-picker-group-name">{rows[0].groupName}</div>
-                {rows.map(row => {
-                  const selected = current?.provider === row.groupId && current.model === row.model.id
-                  return (
-                    <button
-                      key={row.model.id}
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      className={`mf-picker-row ${selected ? 'is-selected' : ''}`}
-                      title={row.title}
-                      disabled={busy}
-                      onClick={() => choose(row.groupId, row.model)}
-                    >
-                      <VerdictDot tone={row.tone} />
-                      <span className="mf-picker-row-name">{row.model.name}</span>
-                      <span className="mf-picker-row-check">{selected ? <Check /> : null}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+            {grouped.map(rows => {
+              const groupId = rows[0].groupId
+              const balanceInfo = vendorBalance.get(groupId)
+              const balanceText = balanceInfo === undefined
+                ? ''
+                : balanceInfo.balance === null
+                  ? ''
+                  : `${balanceInfo.balance}${shortUnit(balanceInfo.unit)}`
+              return (
+                <div className="mf-picker-group" key={groupId}>
+                  <div className="mf-picker-group-name">
+                    {rows[0].groupName}
+                    {balanceText !== '' && (
+                      <span className="mf-picker-group-balance">{balanceText}</span>
+                    )}
+                  </div>
+                  {rows.map(row => {
+                    const selected = current?.provider === row.groupId && current?.model === row.model.id
+                    return (
+                      <button
+                        key={row.model.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`mf-picker-row ${selected ? 'is-selected' : ''}`}
+                        title={row.title}
+                        disabled={busy}
+                        onClick={() => choose(row.groupId, row.model)}
+                      >
+                        <VerdictDot tone={row.tone} />
+                        <span className="mf-picker-row-name">{row.model.name}</span>
+                        <span className="mf-picker-row-check">{selected ? <Check /> : null}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
             {state.status === 'ready' && grouped.length === 0 && (
               <div className="mf-picker-note">
                 {groups.length === 0 ? t('picker.emptyModels') : t('picker.emptySearch')}
@@ -446,6 +488,18 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
               </div>
             </div>
           )}
+
+          <div className="mf-picker-footer">
+            <button type="button" className={`mf-picker-footer-btn ${freeModel.switchOn ? 'is-on' : ''}`} disabled={freeModel.switchPending} onClick={() => freeModel.setSwitch(!freeModel.switchOn)} title={freeModel.switchOn ? t('switch.off') : t('switch.on')}>
+              {freeModel.switchOn ? t('picker.restore') : t('picker.clean')}
+            </button>
+            <button type="button" className="mf-picker-footer-btn" disabled={freeModel.loading} onClick={() => { void freeModel.refresh(); setOpen(false) }} title={t('card.refresh')}>
+              {t('picker.refresh')}
+            </button>
+            <button type="button" className={`mf-picker-footer-btn ${freeModel.sweeping ? 'is-sweeping' : ''}`} disabled={freeModel.sweeping || freeModel.switchPending} onClick={freeModel.sweeping ? freeModel.stopSweep : freeModel.runSweep} title={freeModel.sweeping ? t('sweep.stop') : t('picker.probe')}>
+              {freeModel.sweeping ? t('picker.stop') : t('picker.probe')}
+            </button>
+          </div>
         </div>,
         document.body,
       )}

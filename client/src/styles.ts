@@ -580,6 +580,218 @@ export const CSS = `
 
 .mf-lock-muted { color: rgba(255, 255, 255, 0.42); font-size: 13px; }
 
+/* ── the card wall ───────────────────────────────────────────────────────── */
+
+.mf-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  width: min(1200px, 92vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.mf-wall-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.mf-wall-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.mf-wall-card.is-ok { border-left: 3px solid #34d399; }
+.mf-wall-card.is-warn { border-left: 3px solid #fbbf24; }
+.mf-wall-card.is-bad { border-left: 3px solid #f87171; }
+.mf-wall-card.is-idle { border-left: 3px solid rgba(255, 255, 255, 0.3); }
+
+.mf-wall-glyph {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  opacity: 0.4;
+}
+.mf-wall-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+.mf-wall-card-headline {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.mf-wall-card-caption {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.mf-wall-card-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.mf-wall-card-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mf-wall-card-figure-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.mf-wall-card-figure-value {
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.mf-wall-card-figure-bar {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  margin-top: 2px;
+}
+.mf-wall-card-figure-fill {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  transition: width 300ms ease;
+}
+.mf-wall-card-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+}
+
+/* ── the detail overlay ──────────────────────────────────────────────────── */
+
+.mf-wall-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  animation: mf-lock-in 200ms ease-out;
+}
+.mf-wall-detail-inner {
+  position: relative;
+  width: min(700px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(28, 30, 46, 0.95);
+  color: #f3f5fb;
+}
+.mf-wall-detail-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  cursor: pointer;
+}
+.mf-wall-detail-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.mf-wall-detail-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.mf-wall-detail-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 12px;
+}
+.mf-wall-detail-group {
+  margin-bottom: 16px;
+}
+.mf-wall-detail-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 8px;
+}
+.mf-wall-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.mf-wall-detail-row:last-child {
+  border-bottom: none;
+}
+.mf-wall-detail-row.is-ok .mf-wall-detail-row-value { color: #34d399; }
+.mf-wall-detail-row.is-warn .mf-wall-detail-row-value { color: #fbbf24; }
+.mf-wall-detail-row.is-bad .mf-wall-detail-row-value { color: #f87171; }
+.mf-wall-detail-row.is-idle .mf-wall-detail-row-value { color: rgba(255, 255, 255, 0.5); }
+.mf-wall-detail-row-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.mf-wall-detail-row-value {
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.mf-wall-detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.mf-wall-detail-action {
+  flex: 1;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.mf-wall-detail-action:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.mf-wall-detail-action.is-confirm {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+
 /* ── the action notice ──────────────────────────────────────────────────── */
 
 /* A screen-anchored toast, not a bubble on the float.
@@ -649,18 +861,33 @@ export const CSS = `
   cursor: default;
 }
 .mf-picker-label {
+  display: var(--dsh-composer-model-text-display, block);
   overflow: hidden;
   min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/*
+ * A narrow composer gives the model seat no room for a name. The shell's
+ * control row measures itself and marks that moment with data-model-compact,
+ * published as a pair of inherited custom properties; the native seat answers
+ * it by trading the model name for a glyph. Honoring the same two properties
+ * is what makes this seat collapse on exactly the same frame as the native
+ * one, instead of pushing the whole row onto a second line.
+ */
 .mf-picker-effort {
+  display: var(--dsh-composer-model-text-display, block);
   overflow: hidden;
   min-width: 0;
   color: var(--dsw-alias-label-caption, #98a2b3);
   text-overflow: ellipsis;
   white-space: nowrap;
   flex-shrink: 1000;
+}
+.mf-picker-trigger-icon {
+  display: var(--dsh-composer-model-icon-display, none);
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #98a2b3);
 }
 .mf-picker-chevron {
   flex: none;
@@ -723,14 +950,9 @@ export const CSS = `
   outline: none;
 }
 .mf-picker-list {
+  flex: 1 1 auto;
   overflow-y: auto;
   min-height: 0;
-}
-.mf-picker-group-name {
-  padding: 6px 8px 2px;
-  color: var(--dsw-alias-label-caption, #98a2b3);
-  font-size: 11px;
-  font-weight: 600;
 }
 .mf-picker-row {
   display: flex;
@@ -780,6 +1002,70 @@ export const CSS = `
   gap: 8px;
 }
 .mf-picker-note.is-warning {
+  color: var(--dsw-alias-state-warning-primary, #f79009);
+}
+/*
+ * Sticky group header: the vendor name stays pinned while its models scroll,
+ * mirroring the native model list's section headers.
+ */
+.mf-picker-group {
+  position: relative;
+}
+.mf-picker-group-name {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 2px;
+  color: var(--dsw-alias-label-caption, #98a2b3);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--dsw-alias-bg-layer-2, #ffffff);
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(15, 23, 42, 0.1));
+}
+.mf-picker-group-balance {
+  margin-left: 10px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-secondary, #667085);
+}
+/*
+ * Footer bar holding the master switch, refresh and probe buttons, so the
+ * picker is the single place where both verdicts and controls live.
+ */
+.mf-picker-footer {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l1, rgba(15, 23, 42, 0.1));
+  background: var(--dsw-alias-bg-layer-2, #ffffff);
+}
+.mf-picker-footer-btn {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(15, 23, 42, 0.16));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  color: var(--dsw-alias-label-primary, #101828);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.mf-picker-footer-btn:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l3, rgba(15, 23, 42, 0.28));
+}
+.mf-picker-footer-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.mf-picker-footer-btn.is-on {
+  border-color: var(--dsw-alias-state-error-primary, #f04438);
+  color: var(--dsw-alias-state-error-primary, #f04438);
+}
+.mf-picker-footer-btn.is-sweeping {
+  border-color: var(--dsw-alias-state-warning-primary, #f79009);
   color: var(--dsw-alias-state-warning-primary, #f79009);
 }
 .mf-picker-retry {
