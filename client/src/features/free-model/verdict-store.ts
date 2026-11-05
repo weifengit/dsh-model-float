@@ -27,7 +27,7 @@
 import { useSyncExternalStore } from 'react'
 import { readAvailabilityCache, readLaneModels } from './data.ts'
 import type { ModelRow } from './data.ts'
-import { bestVerdict, cachedVerdict, laneVerdict, normalise } from './verdicts.ts'
+import { bestVerdict, cachedLaneVerdict, cachedVerdict, laneVerdict, normalise } from './verdicts.ts'
 import type { CachedProbe, Verdict } from './verdicts.ts'
 import { applyProbe } from './sweep.ts'
 import type { SweepVerdict } from './probe.ts'
@@ -68,7 +68,9 @@ let lastReadAt = 0
 function fold(): Record<string, Verdict> {
   const table: Record<string, Verdict> = {}
   for (const row of laneRows) {
-    table[row.id] = bestVerdict(laneVerdict(row), cachedVerdict(cache, row.id))
+    // A lane model is addressed bare by the sweep but prefixed by the cache,
+    // so every key that answers for it is considered, not just row.id.
+    table[row.id] = bestVerdict(laneVerdict(row), cachedLaneVerdict(cache, row.id))
   }
   // Vendor models live only in the cache: the lane's roster does not know them,
   // and the sweep's key for them is `provider/model`.

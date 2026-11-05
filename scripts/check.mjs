@@ -467,6 +467,23 @@ console.log('availability in the model picker')
   store.recordProbes({ 'trae/x': { state: 'available', detail: '', at: 9 }, 'trae/y': { state: 'unknown', detail: '', at: 9 } })
   check('a landed probe folds in', store.getVerdicts()['trae/x']?.state === 'available')
   check('an unknown probe is not an answer', store.getVerdicts()['trae/y'] === undefined)
+  // 车道模型的命名分歧：名单用裸 id，缓存用 provider 前缀。曾经两者不互通，
+  // 结果 picker 旁边的指示灯永远是灰的——看着就像功能没做。
+  const Vk = await loadModule('client/src/features/free-model/verdicts.ts')
+  const cacheFixture = {
+    'opencode/flint-40b-free': { state: 'throttled', detail: '', at: 5 },
+    'cline/reflection/beam-free': { state: 'region-blocked', detail: '', at: 5 },
+    'unrelated/other': { state: 'available', detail: '', at: 5 },
+  }
+  const answering = Vk.laneCacheKeys(cacheFixture, 'flint-40b-free')
+  check('a prefixed cache key answers for a bare lane id', answering.length === 1 && answering[0] === 'opencode/flint-40b-free')
+  check('a two-level prefix still answers', Vk.laneCacheKeys(cacheFixture, 'beam-free').length === 1)
+  check('a different model does not answer', Vk.laneCacheKeys(cacheFixture, 'flint-40b').length === 0)
+  check('a bare lane id does not answer for itself as a prefix', Vk.laneCacheKeys({ 'flint-40b-free': { state: 'available', detail: '', at: 5 } }, 'flint-40b-free').length === 0)
+  const laneHit = Vk.cachedLaneVerdict(cacheFixture, 'flint-40b-free', 6)
+  check('a lane model reads its prefixed probe', laneHit?.state === 'throttled')
+  const laneMiss = Vk.cachedLaneVerdict(cacheFixture, 'nothing-here', 6)
+  check('a lane model with no key reads unknown', laneMiss === undefined)
   const picker = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'composer-model-picker.tsx'), 'utf8')
   check('the picker reads the shared verdict table', picker.includes('useVerdicts()'))
   check('every row carries a verdict dot', picker.includes('mf-picker-dot'))

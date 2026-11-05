@@ -157,6 +157,50 @@ export function bestVerdict(lane: Verdict | undefined, cached: Verdict | undefin
 export function probeKey(provider: string, modelId: string): string {
   return `${provider}/${modelId}`
 }
+
+/**
+ * The cache keys that answer for one lane model.
+ *
+ * The free lane's roster names a model bare (`flint-40b-free`), but the
+ * availability cache stores it under the provider prefix the probing door knew
+ * (`opencode/flint-40b-free`) — sometimes two levels deep
+ * (`cline/reflection/beam-free`). Enumerating prefixes cannot work: they come
+ * from the pack and change with it. What does hold is the tail, so a key
+ * answers for this model when it ends in `/` + the id.
+ *
+ * @param cache - the stored probes.
+ * @param modelId - the lane model's bare id.
+ * @returns the answering keys, shortest prefix first.
+ */
+export function laneCacheKeys(
+  cache: Readonly<Record<string, unknown>>,
+  modelId: string,
+): string[] {
+  const suffix = `/${modelId}`
+  return Object.keys(cache)
+    .filter((key) => key !== modelId && key.endsWith(suffix))
+    .sort((a, b) => a.length - b.length)
+}
+
+/**
+ * The best stored answer for one lane model, across every key that addresses it.
+ *
+ * @param cache - the stored probes.
+ * @param modelId - the lane model's bare id.
+ * @param now - the clock, for the TTL rule.
+ * @returns the freshest acceptable verdict, or undefined.
+ */
+export function cachedLaneVerdict(
+  cache: Readonly<Record<string, CachedProbe>>,
+  modelId: string,
+  now: number = Date.now(),
+): Verdict | undefined {
+  for (const key of laneCacheKeys(cache, modelId)) {
+    const verdict = cachedVerdict(cache, key, now)
+    if (verdict !== undefined) return verdict
+  }
+  return undefined
+}
 /**
  * Which of a vendor's picker models must leave the picker.
  *

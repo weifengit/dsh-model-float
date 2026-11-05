@@ -24,7 +24,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ComposerModelPickerProps, ModelOption, ModelSelection } from './composer-model-face.ts'
-import { pickerProbeKey } from './composer-keys.ts'
+import { isLaneRoute, pickerProbeKey } from './composer-keys.ts'
+import { laneCacheKeys } from './verdicts.ts'
+import type { Verdict } from './verdicts.ts'
 import { verdictLabel, verdictTone } from './verdict-copy.ts'
 import type { VerdictTone } from './verdict-copy.ts'
 import { refreshReadings, useVerdicts } from './verdict-store.ts'
@@ -57,6 +59,35 @@ function groupTitle(id: string, name: string, t: ComposerModelPickerProps['t']):
 /** The status dot: the whole of the verdict's presence in one row. */
 function VerdictDot({ tone }: { tone: VerdictTone }): React.ReactElement {
   return <span className={`mf-picker-dot is-${tone}`} aria-hidden="true" />
+}
+
+/**
+ * The verdict for one picker row, resolving the lane's two naming schemes.
+ *
+ * A lane model's answer is folded under its bare id by the store, but a page
+ * that read the cache before the lane roster landed — or a roster that failed
+ * to load — only has the prefixed keys. Both are tried, bare first, because
+ * the bare key is the one the store publishes.
+ *
+ * @param verdicts - the folded table.
+ * @param provider - the provider group's id.
+ * @param model - the model's id inside the group.
+ * @returns the verdict, or undefined when nothing answers for this row.
+ */
+function verdictFor(
+  verdicts: Readonly<Record<string, Verdict>>,
+  provider: string,
+  model: string,
+): Verdict | undefined {
+  const key = pickerProbeKey(provider, model)
+  const direct = verdicts[key]
+  if (direct !== undefined) return direct
+  if (!isLaneRoute(provider)) return undefined
+  for (const candidate of laneCacheKeys(verdicts, model)) {
+    const row = verdicts[candidate]
+    if (row !== undefined) return row
+  }
+  return undefined
 }
 
 /** A line-art chevron, matching the composer's other glyphs. */
@@ -173,7 +204,10 @@ export function ComposerModelPicker(props: ComposerModelPickerProps): React.Reac
     for (const group of groups) {
       for (const model of group.models) {
         if (needle !== '' && !model.name.toLowerCase().includes(needle)) continue
-        const verdict = verdicts[pickerProbeKey(group.id, model.id)]
+        // The lane answers under a bare id, the cache under a provider prefix;
+        // fold() reconciles them, and the fallback here covers a lane row the
+        // roster never delivered.
+        const verdict = verdictFor(verdicts, group.id, model.id)
         const state_ = verdict?.state
         rows.push({
           groupId: group.id,
