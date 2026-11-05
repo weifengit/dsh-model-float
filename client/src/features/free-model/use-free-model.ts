@@ -11,18 +11,18 @@
  * @module client/src/features/free-model/use-free-model.ts
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   readSnapshot, readSwitch, writeSwitch, setVendorModelsDisabled, readVendorModels,
-  readAvailabilityCache, isUnusable,
+  isUnusable,
 } from './data.ts'
 import type { FloatSnapshot, VendorRow } from './data.ts'
-import { bestVerdict, cachedVerdict, doomedModelIds, laneVerdict } from './verdicts.ts'
-import type { CachedProbe, Verdict, VerdictState } from './verdicts.ts'
+import { doomedModelIds } from './verdicts.ts'
+import type { Verdict } from './verdicts.ts'
 import { readGatewayPort, runSweep as hostSweep } from './probe.ts'
-import type { SweepVerdict } from './probe.ts'
-import { applyProbe, gatewayModelId, planSweep } from './sweep.ts'
+import { gatewayModelId, planSweep } from './sweep.ts'
 import type { VendorModelEntry } from './sweep.ts'
+import { getCache, getVerdicts, publishLaneModels, recordProbes, refreshReadings, useVerdicts } from './verdict-store.ts'
 import { releaseMemory } from '../system/metrics-client.ts'
 import type { MemoryRelease } from '../system/metrics-client.ts'
 
@@ -77,16 +77,12 @@ export function useFreeModel(): FreeModelState {
   const [switchOn, setSwitchOn] = useState(false)
   const [hiddenVendors, setHiddenVendors] = useState<string[]>([])
   const [switchPending, setSwitchPending] = useState(false)
-  const [cache, setCache] = useState<Record<string, CachedProbe>>({})
-  const [probes, setProbes] = useState<Record<string, Verdict>>({})
   const [sweeping, setSweeping] = useState(false)
   const [sweepProgress, setSweepProgress] = useState({ done: 0, total: 0 })
   const [sweepError, setSweepError] = useState('')
   const mounted = useRef(true)
   const snapshotRef = useRef<FloatSnapshot | null>(null)
   const hiddenRef = useRef<string[]>([])
-  const cacheRef = useRef<Record<string, CachedProbe>>({})
-  const verdictsRef = useRef<Record<string, Verdict>>({})
   const sweepRef = useRef<AbortController | null>(null)
 
   const refresh = useCallback(() => {
@@ -111,44 +107,14 @@ export function useFreeModel(): FreeModelState {
   }, [])
 
   // ── the verdict table ─────────────────────────────────────────────────────
-  // One row per probe key: the lane's own answer if it has one, this plugin's
-  // cached probe if that is stronger, and the live sweep's result on top of
-  // both while a sweep runs.
-  const verdicts = useMemo<Record<string, Verdict>>(() => {
-    const table: Record<string, Verdict> = {}
-    for (const row of snapshot?.models ?? []) {
-      table[row.id] = bestVerdict(laneVerdict(row), cachedVerdict(cache, row.id))
-    }
-    // Vendor models live only in the cache: the lane's roster does not know
-    // them, and the sweep's key is `provider/model`.
-    for (const key of Object.keys(cache)) {
-      if (table[key] !== undefined) continue
-      const fresh = cachedVerdict(cache, key)
-      if (fresh !== undefined) table[key] = fresh
-    }
-    for (const [key, verdict] of Object.entries(probes)) table[key] = verdict
-    return table
-  }, [snapshot, cache, probes])
+  // The answers live in the shared store: the composer's model list renders the
+  // same table, and one fold means the two surfaces cannot disagree. This hook
+  // publishes the roster it reads and folds the sweep's landings in.
+  const verdicts = useVerdicts()
 
   useEffect(() => {
-    void readAvailabilityCache().then(stored => {
-      if (!mounted.current) return
-      cacheRef.current = stored
-      setCache(stored)
-    })
-  }, [])
-
-  /** Fold the sweep's verdicts into the table the UI reads. */
-  const recordSweepVerdicts = useCallback((landed: Readonly<Record<string, SweepVerdict>>) => {
-    const next: Record<string, Verdict> = {}
-    for (const [key, row] of Object.entries(landed)) {
-      if (row.state === 'unknown') continue
-      applyProbe(verdictsRef.current, key, row.state as VerdictState, row.detail, row.at)
-      next[key] = verdictsRef.current[key]
-    }
-    if (Object.keys(next).length === 0) return
-    setProbes(current => ({ ...current, ...next }))
-  }, [])
+    if (snapshot !== null) publishLaneModels(snapshot.models)
+  }, [snapshot])
 
   // ── the switch's workhorse ───────────────────────────────────────────────
   // Hide every picker model that a verdict (or a dead vendor) says cannot
@@ -158,7 +124,7 @@ export function useFreeModel(): FreeModelState {
   // actually goes.
   const hideRefusedModels = useCallback(async (): Promise<Record<string, string[]>> => {
     const current = snapshotRef.current
-    const table = verdictsRef.current
+    const table = getVerdicts()
     const hidden: Record<string, string[]> = {}
     const failures: string[] = []
     for (const row of current?.vendors ?? []) {
@@ -203,14 +169,11 @@ export function useFreeModel(): FreeModelState {
         // A vendor whose list cannot be read is a vendor with nothing to ask.
       }
     }
-    // planSweep reads the folded table: the lane's own answers have to be in
+    // planSweep reads the published table: the lane's own answers have to be in
     // it, or a model the lane already probed would be paid for twice.
-    const table: Record<string, Verdict> = { ...verdictsRef.current }
-    for (const model of current.models) {
-      const folded = bestVerdict(laneVerdict(model), cachedVerdict(cacheRef.current, model.id))
-      const mine = table[model.id]
-      if (mine === undefined || folded.at > mine.at) table[model.id] = folded
-    }
+    const stored = getCache()
+    const table: Record<string, Verdict> = { ...getVerdicts() }
+
     const targets = planSweep(
       current.models.map(model => ({
         id: model.id, name: model.name, availability: model.availability,
@@ -218,7 +181,7 @@ export function useFreeModel(): FreeModelState {
         probedAt: model.probedAt, hiddenByUser: model.hiddenByUser,
       })),
       vendorModels,
-      cacheRef.current,
+      stored,
       table,
     )
     if (targets.length === 0) {
@@ -238,17 +201,16 @@ export function useFreeModel(): FreeModelState {
       signal: controller.signal,
       onProgress: status => {
         setSweepProgress({ done: status.done, total: status.total })
-        // The Host persists each verdict as it lands; folding them in here as
-        // well keeps the open card honest mid-sweep without a second write.
-        recordSweepVerdicts(status.results)
+        // The Host persists each verdict as it lands; the store folds them in
+        // as well, so the open picker stays honest mid-sweep.
+        recordProbes(status.results)
       },
     })
     // Pick the cache up again: the sweep's verdicts are on the Host now, and
-    // reading them back is what makes them survive a reload.
-    const stored = await readAvailabilityCache()
+    // reading them back is what makes them survive a reload. The store folds
+    // them in and keeps the picker's table honest without a second write.
+    await refreshReadings(true)
     if (mounted.current) {
-      cacheRef.current = stored
-      setCache(stored)
       setSweepError(sweepFailure)
       setSweeping(false)
     }
@@ -278,8 +240,7 @@ export function useFreeModel(): FreeModelState {
         // follow-up hide did; the verdicts are already on the Host.
       }
     }
-  }, [recordSweepVerdicts, refresh, hideRefusedModels])
-
+  }, [refresh, hideRefusedModels])
   const stopSweep = useCallback(() => {
     sweepRef.current?.abort()
   }, [])

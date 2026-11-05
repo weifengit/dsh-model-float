@@ -397,6 +397,22 @@ async function readLane(signal?: AbortSignal): Promise<{
 }
 
 /**
+ * Read only the free-lane roster's per-model rows.
+ *
+ * The composer's model list shows this plugin's verdicts for models the lane
+ * owns, and it mounts whether or not the float is open — so it needs the roster
+ * without paying for the whole vendor/balance read the card does.
+ *
+ * @param signal - aborts the read.
+ * @returns the roster rows, or an empty list when the read failed.
+ */
+export async function readLaneModels(signal?: AbortSignal): Promise<ModelRow[]> {
+  const { models } = await readLane(signal)
+  return models
+}
+
+
+/**
  * Read every vendor's status and balance.
  *
  * @param signal - aborts the reads.

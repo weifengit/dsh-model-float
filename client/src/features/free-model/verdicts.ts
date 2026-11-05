@@ -198,7 +198,7 @@ export function doomedModelIds(
  */
 
 /** Coerce anything the lane or the cache says into a known state. */
-function normalise(value: string | undefined): VerdictState {
+export function normalise(value: string | undefined): VerdictState {
   switch (value) {
     case 'available': return 'available'
     case 'region-blocked': return 'region-blocked'

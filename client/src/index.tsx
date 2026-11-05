@@ -25,6 +25,7 @@
 import React from 'react'
 import { ModelFloat } from './float.tsx'
 import { CSS } from './styles.ts'
+import { ComposerModelPicker } from './features/free-model/composer-model-picker.tsx'
 
 /** The locale namespace this plugin registers its copy under. */
 const NS = 'modelFloat'
@@ -63,6 +64,21 @@ const DICT = {
     'vendor.noBalance': '无余额接口',
     'switch.onShort': '已清理',
     'switch.offShort': '未清理',
+    'picker.menu': '模型',
+    'picker.open': '选择模型',
+    'picker.account': 'DeepSeek 账号',
+    'picker.loading': '读取中…',
+    'picker.placeholder': '选择模型',
+    'picker.search': '搜索模型',
+    'picker.emptyModels': '没有读到模型清单。',
+    'picker.emptySearch': '没有匹配的模型。',
+    'picker.untested': '未探测：可用性还不知道',
+    'picker.effort': '思考强度',
+    'picker.providerDefault': '跟随模型默认',
+    'picker.groupFailed': '{name} 读取失败：{message}',
+    'picker.failed': '切换模型失败',
+    'picker.sessionInUse': '这个会话正在写入，稍后再切换模型',
+    'picker.retry': '重试',
     'switch.on': '隐藏 {count} 个不可用厂商的模型，让模型选择器清爽一点',
     'switch.off': '把之前隐藏的模型放回模型选择器',
     'switch.hidden': '已隐藏 {count} 家不可用厂商的 {models} 个模型',
@@ -127,6 +143,21 @@ const DICT = {
     'vendor.noBalance': 'No balance endpoint',
     'switch.onShort': 'Cleaned',
     'switch.offShort': 'Not cleaned',
+    'picker.menu': 'Model',
+    'picker.open': 'Select a model',
+    'picker.account': 'DeepSeek account',
+    'picker.loading': 'Reading…',
+    'picker.placeholder': 'Select a model',
+    'picker.search': 'Search models',
+    'picker.emptyModels': 'No model roster was read.',
+    'picker.emptySearch': 'No model matches.',
+    'picker.untested': 'Untested: availability is not known yet',
+    'picker.effort': 'Thinking effort',
+    'picker.providerDefault': 'Model default',
+    'picker.groupFailed': '{name} failed to load: {message}',
+    'picker.failed': 'Could not switch models',
+    'picker.sessionInUse': 'This session is busy writing; try switching models in a moment',
+    'picker.retry': 'Retry',
     'switch.on': "Hide {count} unusable vendors' models, so the model picker gets shorter",
     'switch.off': 'Put the hidden models back into the model picker',
     'switch.hidden': '{models} models of {count} unusable vendors are hidden',
@@ -188,4 +219,39 @@ export function apply(ctx: Record<string, any>): void {
   }, (props: Record<string, any>) => (
     <ModelFloat t={t} useSessions={props.useSessions} />
   )))
+eE:
+  // The composer's model seat is a `single` slot: one occupant, and the shell's
+  // own picker is the default one. Registering at a lower priority shadows it
+  // with this plugin's list, which shows the same directory the shell renders
+  // with each model's probe verdict beside it. The seat is the only place the
+  // user actually picks a model, so it is the only place the answer belongs.
+  //
+  // The slot's injected face carries the whole directory contract; the plugin
+  // speaks it structurally (see composer-model-face.ts) rather than importing
+  // another package's private types.
+  ctx.inject(['slots', 'modelDirectories', 'sessions'], (scope: Record<string, any>) => {
+    const models = scope.modelDirectories
+    const sessions = scope.sessions
+    scope.slots.inject('conversation.input.model', () => scope.slots.register({
+      name: 'conversation.input.model',
+      priority: -100,
+      locale: NS,
+      inject: (sessionId: string) => {
+        const directory = models.directoryFor(sessionId)
+        // A subagent session cannot inspect or select a model: the shell's own
+        // seat renders nothing there, and shadowing it must not change that.
+        const available = sessions.subagentAddress(sessionId) === undefined
+        return {
+          available,
+          directory: directory.store,
+          load: () => {
+            if (available) directory.load().catch(() => {})
+          },
+          select: (selection: unknown) => available
+            ? directory.select(selection)
+            : Promise.resolve(undefined),
+        }
+      },
+    }, ComposerModelPicker))
+  })
 }

@@ -402,6 +402,45 @@ console.log('model hiding')
   check('the float wears the official DeepSeek mark', whale.includes('FISH_LOGO_PATH'))
 }
 
+// 模型选择器里的可用性：探测结果必须显示在用户真正选模型的那个 slot 上，
+// 而不是旁边另挂一个控件。这里验证挂载点、优先级、键映射和共享状态四个环节。
+console.log('availability in the model picker')
+{
+  const entry = readFileSync(join(root, 'client', 'src', 'index.tsx'), 'utf8')
+  // 输入框底部的模型席位是 single slot：只有一个占位者，插件要遮蔽它就必须
+  // 用不同的 priority 覆盖，否则注册直接抛错。
+  check('the picker occupies the composer model seat', entry.includes("'conversation.input.model'"))
+  check('the seat is shadowed at a distinct priority', /priority:\s*-\d+/.test(entry))
+  check('the manual selector is gone', !entry.includes('ModelAvailabilitySelector') && !entry.includes('conversation.input.right'))
+  const selectorPath = join(root, 'client', 'src', 'features', 'free-model', 'model-availability-selector.tsx')
+  check('the manual-marking component was removed', !existsSync(selectorPath))
+  // 探测键映射：lane 的路由用裸 id，厂商用 provider/model——与缓存键一致。
+  const keys = await loadModule('client/src/features/free-model/composer-keys.ts')
+  check('a lane model is keyed by its roster id', keys.pickerProbeKey('our-free-model', 'kilo-auto/free') === 'kilo-auto/free')
+  check('the region lane is a lane too', keys.pickerProbeKey('our-free-model-region', 'beam-free') === 'beam-free')
+  check('a vendor model is keyed provider/model', keys.pickerProbeKey('trae', 'glm-5.3-flash') === 'trae/glm-5.3-flash')
+  check('a slashed vendor model keeps its own slash', keys.pickerProbeKey('cline', 'recursive/flint-v1.0:free') === 'cline/recursive/flint-v1.0:free')
+  // 两个界面读同一张判定表：卡片和选择器各折一份就会说出两种结论。
+  const store = await loadModule('client/src/features/free-model/verdict-store.ts')
+  store.publishLaneModels([{ id: 'kilo-auto/free', name: 'Kilo', availability: 'throttled', detail: '', route: '', availabilitySource: 'probe', probedAt: 5, hiddenByUser: false }])
+  check('the store folds published lane rows', store.getVerdicts()['kilo-auto/free']?.state === 'throttled')
+  const before = store.verdictSnapshot()
+  store.publishLaneModels([{ id: 'kilo-auto/free', name: 'Kilo', availability: 'throttled', detail: '', route: '', availabilitySource: 'probe', probedAt: 5, hiddenByUser: false }])
+  check('an unchanged table keeps its identity', before === store.verdictSnapshot())
+  // 探测器落地的新判定要即时进入表里，并忽略 unknown（unknown 不是答案）。
+  store.recordProbes({ 'trae/x': { state: 'available', detail: '', at: 9 }, 'trae/y': { state: 'unknown', detail: '', at: 9 } })
+  check('a landed probe folds in', store.getVerdicts()['trae/x']?.state === 'available')
+  check('an unknown probe is not an answer', store.getVerdicts()['trae/y'] === undefined)
+  const picker = readFileSync(join(root, 'client', 'src', 'features', 'free-model', 'composer-model-picker.tsx'), 'utf8')
+  check('the picker reads the shared verdict table', picker.includes('useVerdicts()'))
+  check('every row carries a verdict dot', picker.includes('mf-picker-dot'))
+  check('the picker submits through the shared directory', picker.includes('select(') && picker.includes('directory'))
+  check('a subagent session renders no seat', picker.includes('if (!available) return null'))
+  // 人工标记入口必须彻底消失：判定只来自探测。
+  check('no manual marking remains', !picker.includes('setVendorModelsDisabled') && !picker.includes('markUnavailable'))
+}
+
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`)
   process.exit(1)

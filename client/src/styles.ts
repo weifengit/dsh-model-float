@@ -611,4 +611,214 @@ export const CSS = `
   from { opacity: 0; transform: translateX(-50%) translateY(8px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+/* ── the composer model list ── */
+/*
+ * The trigger keeps the composer's own proportions: 28 px tall, 13 px label,
+ * no chrome until hover. The list is portalled onto the body, so its own
+ * z-index puts it above the composer seat without inheriting that seat's
+ * stacking context.
+ */
+.mf-picker-root {
+  position: relative;
+  min-width: 0;
+  max-width: min(360px, 45cqw);
+}
+.mf-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: 0 0;
+  outline: none;
+  color: var(--dsw-alias-label-secondary, #667085);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  cursor: pointer;
+}
+.mf-picker-trigger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.05));
+}
+.mf-picker-trigger:disabled {
+  color: var(--dsw-alias-label-dimmed, #98a2b3);
+  cursor: default;
+}
+.mf-picker-label {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mf-picker-effort {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--dsw-alias-label-caption, #98a2b3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1000;
+}
+.mf-picker-chevron {
+  flex: none;
+  color: var(--dsw-alias-label-caption, #98a2b3);
+  transition: transform 120ms;
+}
+.mf-picker-chevron.is-open {
+  transform: rotate(180deg);
+}
+/*
+ * The verdict dot. Its colour is the whole message at 6 px, and the hit area
+ * around it is inert: the row is the button, not the dot.
+ */
+.mf-picker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: currentColor;
+}
+.mf-picker-dot.is-ok {
+  color: var(--dsw-alias-state-success-primary, #12b76a);
+  background: var(--dsw-alias-state-success-primary, #12b76a);
+}
+.mf-picker-dot.is-refused {
+  color: var(--dsw-alias-state-error-primary, #f04438);
+  background: var(--dsw-alias-state-error-primary, #f04438);
+}
+.mf-picker-dot.is-unknown {
+  color: var(--dsw-alias-label-caption, #98a2b3);
+  background: var(--dsw-alias-label-caption, #98a2b3);
+  opacity: 0.5;
+}
+.mf-picker-menu {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  min-width: min(260px, 100vw - 32px);
+  max-width: min(440px, 100vw - 32px);
+  max-height: min(440px, 60vh);
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(15, 23, 42, 0.1));
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2, #ffffff);
+  box-shadow: var(--dsw-elevation-menu, 0 12px 32px rgba(0, 0, 0, 0.24));
+  color: var(--dsw-alias-label-primary, #101828);
+  font-size: 13px;
+}
+.mf-picker-search {
+  padding: 5px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(15, 23, 42, 0.16));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+.mf-picker-list {
+  overflow-y: auto;
+  min-height: 0;
+}
+.mf-picker-group-name {
+  padding: 6px 8px 2px;
+  color: var(--dsw-alias-label-caption, #98a2b3);
+  font-size: 11px;
+  font-weight: 600;
+}
+.mf-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: 0 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mf-picker-row:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.05));
+}
+.mf-picker-row:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.mf-picker-row.is-selected {
+  background: var(--dsw-alias-interactive-bg-selected, rgba(77, 107, 254, 0.12));
+}
+.mf-picker-row-name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mf-picker-row-check {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  color: var(--dsw-alias-state-business-primary, #4d6bfe);
+}
+.mf-picker-note {
+  padding: 6px 8px;
+  color: var(--dsw-alias-label-caption, #98a2b3);
+  font-size: 12px;
+}
+.mf-picker-note.is-error {
+  display: flex;
+  color: var(--dsw-alias-state-error-primary, #f04438);
+  align-items: center;
+  gap: 8px;
+}
+.mf-picker-note.is-warning {
+  color: var(--dsw-alias-state-warning-primary, #f79009);
+}
+.mf-picker-retry {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: 0 0;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.mf-picker-efforts {
+  border-top: 1px solid var(--dsw-alias-border-l1, rgba(15, 23, 42, 0.1));
+  padding-top: 2px;
+}
+.mf-picker-effort-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 8px 6px;
+}
+.mf-picker-effort-chip {
+  padding: 3px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(15, 23, 42, 0.16));
+  border-radius: 999px;
+  background: 0 0;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mf-picker-effort-chip.is-selected {
+  border-color: var(--dsw-alias-state-business-primary, #4d6bfe);
+  color: var(--dsw-alias-state-business-primary, #4d6bfe);
+}
+.mf-picker-effort-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 `
