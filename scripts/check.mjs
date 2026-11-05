@@ -463,6 +463,12 @@ console.log('availability in the model picker')
   const before = store.verdictSnapshot()
   store.publishLaneModels([{ id: 'kilo-auto/free', name: 'Kilo', availability: 'throttled', detail: '', route: '', availabilitySource: 'probe', probedAt: 5, hiddenByUser: false }])
   check('an unchanged table keeps its identity', before === store.verdictSnapshot())
+  // 「闪一下就没」的真因：读失败/空名单曾把整张表塌掉。三道防线都要在。
+  const sizeBefore = Object.keys(store.getVerdicts()).length
+  store.publishLaneModels([])
+  check('an empty roster does not wipe the table', Object.keys(store.getVerdicts()).length === sizeBefore)
+  await store.refreshReadings(true)
+  check('a refresh keeps the rows it already had', Object.keys(store.getVerdicts()).length >= sizeBefore)
   // 探测器落地的新判定要即时进入表里，并忽略 unknown（unknown 不是答案）。
   store.recordProbes({ 'trae/x': { state: 'available', detail: '', at: 9 }, 'trae/y': { state: 'unknown', detail: '', at: 9 } })
   check('a landed probe folds in', store.getVerdicts()['trae/x']?.state === 'available')

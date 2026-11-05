@@ -97,6 +97,31 @@ function sameAnswers(a: Readonly<Record<string, Verdict>>, b: Readonly<Record<st
 }
 
 /**
+ * Whether two rosters say the same thing, so a publish can be skipped.
+ *
+ * Two surfaces publish this table on their own timers, and the lane's roster
+ * carries answers (`probedAt`, `detail`) that change on the Host's schedule,
+ * not the page's. Comparing the identity of every row is what keeps a re-poll
+ * from looking like news.
+ *
+ * @param a - the roster being replaced.
+ * @param b - the roster being published.
+ * @returns whether they agree.
+ */
+function sameRoster(a: readonly ModelRow[], b: readonly ModelRow[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i]
+    const right = b[i]
+    if (right === undefined) return false
+    if (left.id !== right.id || left.availability !== right.availability) return false
+    if (left.availabilitySource !== right.availabilitySource || left.probedAt !== right.probedAt) return false
+    if (left.hiddenByUser !== right.hiddenByUser || left.detail !== right.detail) return false
+  }
+  return true
+}
+
+/**
  * Refold and publish, unless nothing changed.
  *
  * Identity stability is the store's contract: a subscriber that re-renders on
@@ -119,6 +144,14 @@ function reflow(): void {
  * @param rows - the roster's per-model rows.
  */
 export function publishLaneModels(rows: readonly ModelRow[]): void {
+  // An empty roster is a failed read far more often than a lane with no models:
+  // readSnapshot answers `models: []` whenever the summary call fails. Taking
+  // that as truth would wipe every lane row the picker draws its dots from,
+  // which is what made them appear for a moment and then vanish.
+  if (rows.length === 0 && laneRows.length > 0) return
+  // Two callers publish this table — the float and every mounted composer seat —
+  // so an identical roster must not count as news.
+  if (sameRoster(laneRows, rows)) return
   laneRows = rows
   reflow()
 }
@@ -148,14 +181,27 @@ export function getCache(): Readonly<Record<string, CachedProbe>> {
 export function refreshReadings(force = false): Promise<void> {
   if (inflight !== null) return inflight
   if (!force && Date.now() - lastReadAt < MIN_READ_GAP_MS) return Promise.resolve()
-  const needsLane = laneRows.length === 0
+  // Everything is re-read every time, not just what is missing.
+  //
+  // This used to skip the roster once it had arrived, and to replace the whole
+  // cache with whatever the read returned. Both are wrong for the surfaces that
+  // read this table: a roster that is never re-read cannot follow the lane as it
+  // recovers, and a read that fails or comes back partial does not just say
+  // "nothing new" — it deletes answers that were already there, so the picker's
+  // dots flick on and then vanish.
   inflight = Promise.all([
-    needsLane ? readLaneModels().catch((): ModelRow[] => []) : Promise.resolve(undefined),
-    readAvailabilityCache().catch((): Record<string, CachedProbe> => ({})),
+    readLaneModels().catch((): ModelRow[] | undefined => undefined),
+    readAvailabilityCache().catch((): Record<string, CachedProbe> | undefined => undefined),
   ])
     .then(([rows, stored]) => {
-      if (rows !== undefined) laneRows = rows
-      cache = stored
+      // A failed roster read keeps the roster we already have.
+      if (rows !== undefined && rows.length > 0) laneRows = rows
+      // A failed or empty cache read keeps the probes we already have; a good
+      // one merges, so a key the Host no longer reports does not silently
+      // delete a verdict this page already showed.
+      if (stored !== undefined && Object.keys(stored).length > 0) {
+        cache = { ...cache, ...stored }
+      }
       lastReadAt = Date.now()
       reflow()
     })
