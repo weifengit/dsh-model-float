@@ -1,9 +1,18 @@
 {
   "name": "dsh-model-float",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Model Float — 在 DSH 主界面挂一只可拖动的鲸鱼娘浮动面板，悬停即见白嫖模型各厂商的接入状态、剩余积分与余额。Model Float: a draggable whale-girl floating panel in the DSH web shell that shows, on hover, which free-model vendors are connected, how much credit each still has, and which are unavailable.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weifengit/dsh-model-float.git"
+  },
+  "files": [
+    "src/",
+    "dist/client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
@@ -22,7 +31,11 @@
     "quota"
   ],
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": "^0.2.2-rc.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   },
   "dsh": {
     "bundle": {
